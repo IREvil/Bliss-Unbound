@@ -207,6 +207,12 @@ float ssrHitCamDist = 0.0;
 // Set by composite1 when a translucent (water, glass) covers the pixel: its own forward pass already traced a reflection there.
 bool specBehindTranslucent = false;
 
+// Reflection prepass (REFL_PREPASS): the environment reflection it traced (a < 0 = none), and the lighting pass' upsampled copy.
+vec4 reflPrepassOut = vec4(0.0, 0.0, 0.0, -1.0);
+vec4 reflWorldFetched = vec4(0.0);
+// Overrides the SSR step count when > 0 (mirrors traced outside their forward pass).
+float ssrQualityOverride = -1.0;
+
 #if defined WSR_DEFER_FORWARD || defined WSR_DEFER_RESOLVE
 	// Forward pass -> lighting composite: the reflection colour a WSR hit replaces, its weight, and the ray.
 	vec3 wsrDeferBase = vec3(0.0);
@@ -245,6 +251,7 @@ vec4 screenSpaceReflections(
 	#if defined DEFERRED_SPECULAR
 		quality = float(DEFERRED_SSR_QUALITY);
 	#endif
+	if (ssrQualityOverride > 0.0) quality = ssrQualityOverride;
 
 	vec3 raytracePos = rayTraceSpeculars(reflectedVector, viewPos, noise, quality, isHand, reflectionLength);
 	ssrHitDist = -1.0;
@@ -308,6 +315,47 @@ vec4 screenSpaceReflections(
 
 	return reflection;
 }
+
+#if defined INCLUDE_BLISS_WSR && defined WSR_DEFER_RESOLVE
+	// Environment reflection of a water/glass surface recorded by the water pass: SSR plus WSR in the chosen order.
+	// playerPos/normal/rayDir are world-space; noWSR = the surface's quality is POTATO.
+	vec4 MirrorEnvironment(vec3 viewPos, vec3 playerPos, vec3 normal, vec3 rayDir, bool noWSR, float noise) {
+		ssrQualityOverride = float(FORWARD_SSR_QUALITY);
+		float ssrMask = 1.0;
+		vec4 ssr = screenSpaceReflections(mat3(gbufferModelView) * rayDir, viewPos, noise, false, 0.0, ssrMask);
+		ssrQualityOverride = -1.0;
+		if (noWSR) return ssr;
+
+		#if WORLD_SPACE_REF_MODE == 1
+			wsrHitDist = -2.0;
+			vec4 env = BlissWSR(playerPos, normal, rayDir);
+			if (wsrHitDist < -1.5) return ssr; // outside the voxel volume
+			bool wsrHit = env.a > 0.0;
+			if (ssr.a > 0.0 && (!wsrHit || (ssrHitDist > 0.0 && ssrHitDist < wsrHitDist - 0.3))) {
+				env.rgb = mix(env.rgb, ssr.rgb, ssr.a);
+				env.a = max(env.a, ssr.a);
+			}
+			return env;
+		#else
+			vec4 env = ssr;
+			if (env.a < 0.999) {
+				bool tracePlayer = wsrTracePlayer;
+				wsrTracePlayer = false;
+				vec4 wsr = BlissWSR(playerPos, normal, rayDir);
+				wsrTracePlayer = tracePlayer;
+				env.rgb = mix(wsr.rgb, env.rgb, env.a);
+				env.a = max(env.a, wsr.a);
+			}
+			#ifdef INCLUDE_PLAYER_REF
+				// SSR cannot see the first-person player; it wins over whatever SSR found behind it.
+				float prLimit = ssr.a > 0.0 && ssrHitDist > 0.0 ? ssrHitDist : 999999.0;
+				vec4 playerRef = BlissPlayerRef(playerPos + 0.04 * normal, rayDir, prLimit, wsrSunColor, wsrAmbientColor, wsrSunDir);
+				if (playerRef.a > 0.0) env = playerRef;
+			#endif
+			return env;
+		#endif
+	}
+#endif
 
 float getReflectionVisibility(float f0, float roughness){
 
@@ -513,7 +561,9 @@ vec3 specularReflections(
 				#else
 					const bool mirrorNoWSR = false;
 				#endif
-				#if defined INCLUDE_BLISS_WSR && (WORLD_SPACE_REF_MODE == 1 || !defined FORWARD_SPECULAR)
+				#if defined REFL_PREPASS_WORLD && !defined FORWARD_SPECULAR && REFL_PREPASS != 1
+					vec4 enviornmentReflection = reflWorldFetched; // traced at reduced resolution by the prepass
+				#elif defined INCLUDE_BLISS_WSR && (WORLD_SPACE_REF_MODE == 1 || !defined FORWARD_SPECULAR)
 					vec4 enviornmentReflection = vec4(0.0);
 					wsrHitDist = -2.0;
 					if (!isHand && !mirrorNoWSR) {
@@ -543,6 +593,10 @@ vec3 specularReflections(
 					#if DEBUG_VIEW == debug_WSR
 						if (!isHand) enviornmentReflection = vec4(wsrHit ? vec3(0.0, 10.0, 0.0) : ssrUsable ? vec3(0.0, 0.0, 10.0) : vec3(10.0, 0.0, 0.0), 1.0);
 					#endif
+				#elif defined WSR_DEFER_FORWARD
+				// The lighting composite traces this surface's SSR and WSR (at REFLECTION_RES_MIRROR).
+				vec4 enviornmentReflection = vec4(0.0);
+				if (isHand) enviornmentReflection = screenSpaceReflections(mat3(gbufferModelView) * reflectedVector_L, viewPos, noise.z, isHand, roughness, backgroundReflectMask);
 				#else
 				vec4 enviornmentReflection = screenSpaceReflections(mat3(gbufferModelView) * reflectedVector_L, viewPos, noise.z, isHand, roughness, backgroundReflectMask);
 
@@ -557,15 +611,10 @@ vec3 specularReflections(
 						#endif
 					}
 				#endif
-				#if defined INCLUDE_PLAYER_REF && defined WSR_DEFER_FORWARD && defined FORWARD_SPECULAR
-					// SSR cannot see the first-person player; it wins over whatever SSR found behind it.
-					if (!isHand && !mirrorNoWSR) {
-						vec3 prPlayerPos = mat3(gbufferModelViewInverse) * viewPos + gbufferModelViewInverse[3].xyz + 0.04 * normal;
-						float prLimit = enviornmentReflection.a > 0.0 && ssrHitDist > 0.0 ? ssrHitDist : 999999.0;
-						vec4 playerRef = BlissPlayerRef(prPlayerPos, normalize(reflectedVector_L), prLimit, wsrSunColor, wsrAmbientColor, wsrSunDir);
-						if (playerRef.a > 0.0) enviornmentReflection = playerRef;
-					}
 				#endif
+				#if REFL_PREPASS == 1
+					reflPrepassOut = enviornmentReflection;
+					return vec3(0.0);
 				#endif
 				// darkening for metals.
 				vec3 DarkenedDiffuseLighting = isMetal ? diffuseLighting * (1.0-enviornmentReflection.a) * (1.0-lightmap) : diffuseLighting;
@@ -591,9 +640,10 @@ vec3 specularReflections(
 				specularReflections = mix(DarkenedDiffuseLighting, backgroundReflection, backgroundReflectMask);
 			#endif
 			#if defined WSR_DEFER_FORWARD && defined FORWARD_SPECULAR && (DEFERRED_SSR_QUALITY > 0 || FORWARD_SSR_QUALITY > 0)
-				if (!isHand && !mirrorNoWSR) {
+				if (!isHand) {
 					wsrDeferBase = specularReflections;
-					wsrDeferWeight = dot(F0, vec3(1.0 / 3.0)) * (1.0 - enviornmentReflection.a) * (1.0 - reflectionVisibilty);
+					// Negative weight tells the lighting pass this surface is POTATO (screen-space only).
+					wsrDeferWeight = dot(F0, vec3(1.0 / 3.0)) * (1.0 - enviornmentReflection.a) * (1.0 - reflectionVisibilty) * (mirrorNoWSR ? -1.0 : 1.0);
 					wsrDeferDir = normalize(reflectedVector_L);
 				}
 			#endif

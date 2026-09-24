@@ -187,7 +187,12 @@ void applySceneControllerParameters(
 // fog = (uniform fog density, cloudy fog density)
 // ... and more, eventually
 
-flat varying struct sceneController {
+#ifdef REFL_PREPASS
+  struct sceneController
+#else
+  flat varying struct sceneController
+#endif
+ {
   vec2 smallCumulus;
   vec2 largeCumulus;
   vec2 altostratus;

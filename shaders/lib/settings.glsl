@@ -1026,7 +1026,11 @@ const vec3 aerochrome_color = mix(vec3(1.0, 0.0, 0.0), vec3(0.715, 0.303, 0.631)
 #define WORLD_SPACE_REFLECTIONS
 #define WORLD_SPACE_PLAYER_REF -1 // [-1 1]
 // 1 = world-space first, screen-space only where it misses. 2 = screen-space first, world-space fills misses.
-#define WORLD_SPACE_REF_MODE 2 // [1 2]
+#define WORLD_SPACE_REF_MODE 1 // [1 2]
+// Resolution (percent) reflections are traced at in the overworld; the lighting pass upsamples them.
+// World: opaque blocks and entities. Mirrors: water, glass, ice and other translucents.
+#define REFLECTION_RES_WORLD 25 // [25 50 75 100]
+#define REFLECTION_RES_MIRROR 50 // [25 50 75 100]
 // Brightness of world reflections (percent) by day and by night. Other dimensions use the day value.
 #define WSR_DAY_STRENGTH 70 // [30 40 50 60 70 80 90 100 110 120 130 140 150]
 #define WSR_NIGHT_STRENGTH 125 // [50 75 100 110 120 125 130 140 150 175 200 250 300]
@@ -1104,9 +1108,9 @@ const vec3 aerochrome_color = mix(vec3(1.0, 0.0, 0.0), vec3(0.715, 0.303, 0.631)
     #define WORLD_SPACE_REFLECTIONS_INTERNAL -1
 #endif
 
-// Water/glass WSR is traced once per pixel in the lighting composite (like upstream), not in the water pass:
-// there it cost ~0.7 ms at 1440p from overdraw and the extra register load on an already heavy shader.
-#if WORLD_SPACE_REFLECTIONS_INTERNAL > 0 && WORLD_SPACE_REF_MODE == 2
+// Water/glass reflections are traced in the lighting composite (like upstream), not in the water pass:
+// there they cost ~0.7 ms at 1440p from overdraw and the extra register load on an already heavy shader.
+#if WORLD_SPACE_REFLECTIONS_INTERNAL > 0
     #define WSR_TRANSLUCENT_DEFERRED
 #endif
 

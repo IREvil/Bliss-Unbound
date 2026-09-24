@@ -10,7 +10,8 @@ After porting, check two things. Compile with `py tools/validate.py shaders` for
 | --- | --- |
 | `lib/ipbr/**` | IPBR+ glue: Complementary id decoding (`id_decode.glsl`), Complementary-named globals, and the solid/translucent material entry points (`ipbr_solid.glsl`, `ipbr_translucent.glsl`) |
 | `lib/materials/**` | Complementary's material tables and methods (generated normals, coated textures, per-block materials) |
-| `lib/voxelization/**` | ACT voxel volume and flood fill, the WSR voxel scene and ray march (`blissWSR.glsl`), player reflections (`playerRef.glsl`), and the SSBO declarations |
+| `lib/voxelization/**` | ACT voxel volume and flood fill, the WSR voxel scene and ray march (`blissWSR.glsl`), player reflections (`playerRef.glsl`), the reduced-resolution reflection prepass (`reflectionPrepass.glsl`), and the SSBO declarations |
+| `world0/composite2_a.csh`, `world0/composite2_b.csh` | Reflection prepass for blocks (`REFLECTION_RES_WORLD`) and for water/glass (`REFLECTION_RES_MIRROR`); both compile `dimensions/composite1.fsh` with `REFL_PREPASS` |
 | `lib/colors/**` | Complementary light colours used by ACT |
 | `presets/*.txt`, `tools/presets.py` | Presets and the generator for the `profile.*` lines |
 
@@ -25,7 +26,7 @@ After porting, check two things. Compile with `py tools/validate.py shaders` for
 | `dimensions/all_solid.fsh/.vsh` | Calls `ipbr_solid.glsl` (materials, generated normals, coated textures); albedo clamp before packing |
 | `dimensions/all_translucent.fsh/.vsh` | IPBR glass/water, ACT light on translucents, deferred WSR record (`wsrTrans_img`), forward player reflection, connected glass, portal edge, tinted-glass alpha |
 | `lib/specular.glsl` | IPBR reflectance and highlight model, WSR/SSR selection, water vs glass sky-only choice, deferred-WSR globals |
-| `dimensions/composite1.fsh` | ACT block light, candle light, SSS fix, deferred translucent WSR resolve |
+| `dimensions/composite1.fsh` | ACT block light, candle light, SSS fix, water/glass reflection resolve, upsampling of the reflection prepass; varyings and `gl_FragCoord` in helpers go through `FLAT_IN`/`FRAGCOORD` so the file also builds as the prepass compute shader |
 | `dimensions/composite2.fsh/.vsh`, `fogBehindTranslucent_pass.fsh`, `lib/*_fog.glsl` | Colored light fog from the ACT volume, global god rays, End orb; composite2 also clears the player-reflection bounds |
 | `dimensions/composite11.fsh` | `TONEMAP_OPERATOR` (mood) |
 | `dimensions/composite.fsh`, `lib/diffuse_lighting.glsl`, `all_particles.*` | Id decoding for held-item light and SSAO normals |

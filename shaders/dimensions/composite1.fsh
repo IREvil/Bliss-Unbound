@@ -1,5 +1,13 @@
 #include "/lib/settings.glsl"
 
+// REFL_PREPASS: this file is also compiled as the reduced-resolution reflection compute shaders (world0/composite2_a/_b.csh).
+#ifdef REFL_PREPASS
+	#define FLAT_IN
+	#define FRAGCOORD prepassFragCoord
+#else
+	#define FLAT_IN flat varying
+	#define FRAGCOORD gl_FragCoord
+#endif
 // #if defined END_SHADER || defined NETHER_SHADER
 // 	#undef IS_LPV_ENABLED
 // #endifs
@@ -21,6 +29,10 @@
 #include "/lib/util.glsl"
 #include "/lib/res_params.glsl"
 
+#ifdef REFL_PREPASS
+	vec4 prepassFragCoord = vec4(0.0);
+#endif
+
 
 #define diagonal3_old(m) vec3((m)[0].x, (m)[1].y, m[2].z)
 #define  projMAD_old(m, v) (diagonal3_old(m) * (v) + (m)[3].xyz)
@@ -38,9 +50,9 @@ uniform float nightVision;
 		uniform sampler2DShadow shadowtex1;
 	#endif
 
-	flat varying vec3 averageSkyCol_Clouds;
-	flat varying vec4 lightCol;
-	flat varying vec3 moonCol;
+	FLAT_IN vec3 averageSkyCol_Clouds;
+	FLAT_IN vec4 lightCol;
+	FLAT_IN vec3 moonCol;
 
 	#if SUN_SPECULAR_MULT != 0
 		#define LIGHTSOURCE_REFLECTION
@@ -58,7 +70,7 @@ uniform float nightVision;
 #ifdef END_SHADER
 	uniform vec3 lightningEffect;
 	
-	flat varying float Flashing;
+	FLAT_IN float Flashing;
 	#undef LIGHTSOURCE_REFLECTION
 #endif
 
@@ -109,7 +121,7 @@ uniform float farPlane;
 uniform float dhFarPlane;
 uniform float dhNearPlane;
 
-flat varying vec3 zMults;
+FLAT_IN vec3 zMults;
 
 uniform vec2 texelSize;
 uniform float viewWidth;
@@ -117,7 +129,7 @@ uniform float viewHeight;
 uniform float aspectRatio;
 
 uniform float eyeAltitude;
-flat varying vec2 TAA_Offset;
+FLAT_IN vec2 TAA_Offset;
 
 uniform int frameCounter;
 uniform float frameTimeCounter;
@@ -127,11 +139,11 @@ uniform int isEyeInWater;
 uniform ivec2 eyeBrightnessSmooth;
 
 uniform vec3 sunVec;
-flat varying vec3 WsunVec;
-flat varying vec3 unsigned_WsunVec;
-flat varying vec3 WmoonVec;
-flat varying float exposure;
-flat varying vec3 albedoSmooth;
+FLAT_IN vec3 WsunVec;
+FLAT_IN vec3 unsigned_WsunVec;
+FLAT_IN vec3 WmoonVec;
+FLAT_IN float exposure;
+FLAT_IN vec3 albedoSmooth;
 
 #ifdef IS_LPV_ENABLED
 	uniform int heldItemId;
@@ -207,6 +219,8 @@ float convertHandDepth_2(in float depth, bool hand) {
 
 #define DEFERRED_SPECULAR
 #define DEFERRED_SSR_QUALITY 30 // [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 200 300 400 500]
+// Same option as the water pass: water and glass reflections are traced here when deferred.
+#define FORWARD_SSR_QUALITY 30 // [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 200 300 400 500]
 #define DEFERRED_BACKGROUND_REFLECTION
 #define DEFERRED_ROUGH_REFLECTION
 
@@ -223,6 +237,23 @@ float convertHandDepth_2(in float depth, bool hand) {
 #if defined INCLUDE_BLISS_WSR && defined WSR_TRANSLUCENT_DEFERRED && defined OVERWORLD_SHADER
 	#define WSR_DEFER_RESOLVE
 	layout(rgba32ui) uniform readonly uimage2D wsrTrans_img;
+#endif
+// Only world0 runs the reflection prepass (REFL_PREPASS_AVAILABLE from its entry files); elsewhere reflections stay inline.
+#if defined REFL_PREPASS_AVAILABLE && defined INCLUDE_BLISS_WSR && defined OVERWORLD_SHADER
+	#define REFL_PREPASS_WORLD
+	#ifdef WSR_DEFER_RESOLVE
+		#define REFL_PREPASS_MIRROR
+	#endif
+	#if REFL_PREPASS == 1
+		layout(rgba16f) uniform writeonly image2D reflWorld_img;
+	#elif REFL_PREPASS == 2
+		layout(rgba16f) uniform writeonly image2D reflMirror_img;
+	#else
+		layout(rgba16f) uniform readonly image2D reflWorld_img;
+		#ifdef REFL_PREPASS_MIRROR
+			layout(rgba16f) uniform readonly image2D reflMirror_img;
+		#endif
+	#endif
 #endif
 #include "/lib/specular.glsl"
 #include "/lib/diffuse_lighting.glsl"
@@ -281,20 +312,20 @@ vec3 fp10Dither(vec3 color,float dither){
 
 float interleaved_gradientNoise_temporal(){
 	#ifdef TAA
-		return fract(52.9829189*fract(0.06711056*gl_FragCoord.x + 0.00583715*gl_FragCoord.y ) + 1.0/1.6180339887 * frameCounter);
+		return fract(52.9829189*fract(0.06711056*FRAGCOORD.x + 0.00583715*FRAGCOORD.y ) + 1.0/1.6180339887 * frameCounter);
 	#else
-		return fract(52.9829189*fract(0.06711056*gl_FragCoord.x + 0.00583715*gl_FragCoord.y ) + 1.0/1.6180339887);
+		return fract(52.9829189*fract(0.06711056*FRAGCOORD.x + 0.00583715*FRAGCOORD.y ) + 1.0/1.6180339887);
 	#endif
 }
 
 float interleaved_gradientNoise(){
-	vec2 coord = gl_FragCoord.xy;
+	vec2 coord = FRAGCOORD.xy;
 	float noise = fract(52.9829189*fract(0.06711056*coord.x + 0.00583715*coord.y));
 	return noise;
 }
 
 float R2_dither(){
-	vec2 coord = gl_FragCoord.xy ;
+	vec2 coord = FRAGCOORD.xy ;
 
 	#ifdef TAA
 		coord += (frameCounter%40000) * 2.0;
@@ -305,7 +336,7 @@ float R2_dither(){
 }
 
 float R2_dither2(){
-	vec2 coord = gl_FragCoord.xy ;
+	vec2 coord = FRAGCOORD.xy ;
 
 	#ifdef TAA
 		coord += (frameCounter*8)%40000;
@@ -317,9 +348,9 @@ float R2_dither2(){
 
 float blueNoise(){
 	#ifdef TAA
-  		return fract(texelFetch2D(noisetex, ivec2(gl_FragCoord.xy)%512, 0).a + 1.0/1.6180339887 * frameCounter);
+  		return fract(texelFetch2D(noisetex, ivec2(FRAGCOORD.xy)%512, 0).a + 1.0/1.6180339887 * frameCounter);
 	#else
-		return fract(texelFetch2D(noisetex, ivec2(gl_FragCoord.xy)%512, 0).a + 1.0/1.6180339887);
+		return fract(texelFetch2D(noisetex, ivec2(FRAGCOORD.xy)%512, 0).a + 1.0/1.6180339887);
 	#endif
 }
 
@@ -572,9 +603,9 @@ void doEdgeAwareBlur(
 	vec2 ssao_RESULT = vec2(0.0);
 	float edgeSum = 0.0;
 
-	vec2 coord = gl_FragCoord.xy - 1.5;
+	vec2 coord = FRAGCOORD.xy - 1.5;
 	ivec2 UV = ivec2(coord);
-	ivec2 UV_NOISE = ivec2(gl_FragCoord.xy*texelSize + 1);
+	ivec2 UV_NOISE = ivec2(FRAGCOORD.xy*texelSize + 1);
 
 	ivec2 OFFSET[4] = ivec2[](
 	  ivec2(-1,-1),
@@ -602,8 +633,8 @@ void doEdgeAwareBlur(
 		edgeSum += edgeDiff;
 	}
 	// sample without an offset with texture filtering to get a slightly blurred sample. make sure to average without skewing the rest of the average.
-	filteredShadow = shadow_RESULT/edgeSum * 0.8 + 0.2 * texture2D(tex1, texelSize*gl_FragCoord.xy).rgb;
-	ambientEffects =   ssao_RESULT/edgeSum * 0.8 + 0.2 * texture2D(tex2, texelSize*gl_FragCoord.xy).rg;
+	filteredShadow = shadow_RESULT/edgeSum * 0.8 + 0.2 * texture2D(tex1, texelSize*FRAGCOORD.xy).rgb;
+	ambientEffects =   ssao_RESULT/edgeSum * 0.8 + 0.2 * texture2D(tex2, texelSize*FRAGCOORD.xy).rg;
 	// ambientEffects.x = edgeSum / 4.0;
 
 }
@@ -619,12 +650,12 @@ vec4 BilateralUpscale_VLFOG(sampler2D tex, sampler2D depth, float referenceDepth
 		float threshold = referenceDepth * 0.05;
 	#endif
 
-	vec2 coord = gl_FragCoord.xy - 1.5;
+	vec2 coord = FRAGCOORD.xy - 1.5;
 	vec2 UV = coord;
 	const ivec2 SCALE = ivec2(1.0/VL_RENDER_RESOLUTION);
 	ivec2 UV_DEPTH = ivec2(UV*VL_RENDER_RESOLUTION)*SCALE;
 	ivec2 UV_COLOR = ivec2(UV*VL_RENDER_RESOLUTION);
-	ivec2 UV_NOISE = ivec2(gl_FragCoord.xy*texelSize + 1);
+	ivec2 UV_NOISE = ivec2(FRAGCOORD.xy*texelSize + 1);
 
 	ivec2 OFFSET[5] = ivec2[](
 	  ivec2(-1,-1),
@@ -818,6 +849,42 @@ void applyPuddles(
 }
 
 
+#if defined REFL_PREPASS_WORLD && !defined REFL_PREPASS
+	vec4 ReflLoad(int which, ivec2 c) {
+		#ifdef REFL_PREPASS_MIRROR
+			if (which == 1) return imageLoad(reflMirror_img, c);
+		#endif
+		return imageLoad(reflWorld_img, c);
+	}
+
+	// Depth-aware bilinear upsample of a prepass image traced at `scale`; a < 0 when no sample lies on this surface.
+	vec4 ReflUpsample(int which, float scale, sampler2D depthTex, float refDepth) {
+		vec2 screen = vec2(viewWidth, viewHeight);
+		ivec2 loMax = ivec2(ceil(screen * scale)) - 1;
+		vec2 lo = gl_FragCoord.xy * scale - 0.5;
+		ivec2 lo0 = ivec2(floor(lo));
+		vec2 f = lo - vec2(lo0);
+		float refL = ld(refDepth);
+
+		vec4 sum = vec4(0.0);
+		float weightSum = 0.0;
+		for (int i = 0; i < 4; i++) {
+			ivec2 o = ivec2(i & 1, i >> 1);
+			ivec2 c = clamp(lo0 + o, ivec2(0), loMax);
+			vec4 v = ReflLoad(which, c);
+			if (v.a < 0.0) continue;
+			ivec2 rep = min(ivec2((vec2(c) + 0.5) / scale), ivec2(screen) - 1);
+			if (abs(ld(texelFetch2D(depthTex, rep, 0).x) - refL) > refL * 0.05 + 1e-4) continue;
+			vec2 b = mix(1.0 - f, f, vec2(o));
+			float w = b.x * b.y + 1e-4;
+			sum += v * w;
+			weightSum += w;
+		}
+		return weightSum > 0.0 ? sum / weightSum : vec4(0.0, 0.0, 0.0, -1.0);
+	}
+#endif
+
+#ifndef REFL_PREPASS
 void main() {
 
 		vec3 DEBUG = vec3(1.0);
@@ -1466,6 +1533,10 @@ void main() {
 			
 			// Terrain seen through water or glass already gets that surface's own reflection; tracing its own stacked a second SSR/WSR per pixel (upstream skips it too).
 			specBehindTranslucent = z0 < z && !hand && texelFetch2D(colortex2, ivec2(gl_FragCoord.xy), 0).a > 0.0;
+			#ifdef REFL_PREPASS_WORLD
+				reflWorldFetched = ReflUpsample(0, float(REFLECTION_RES_WORLD) * 0.01, depthtex1, texelFetch2D(depthtex1, ivec2(gl_FragCoord.xy), 0).x);
+				reflWorldFetched.a = max(reflWorldFetched.a, 0.0);
+			#endif
 			FINAL_COLOR = specularReflections(viewPos, feetPlayerPos_normalized, WsunVec, specularNoises, specularNormal, SpecularTex.r, SpecularTex.g, albedo, FINAL_COLOR, DirectLightColor*shadowColor, lightmap.y, hand, flashLightSpecularData);
 		#endif
 
@@ -1674,27 +1745,35 @@ void main() {
 
 	#ifdef WSR_DEFER_RESOLVE
 	{
-		// World-space reflection of the front translucent, recorded by the water pass; added to its colour (x0.1 buffer scale).
+		// Reflection of the front translucent, recorded by the water pass; added to its colour (x0.1 buffer scale).
 		vec4 translucentOut = texelFetch2D(colortex2, ivec2(gl_FragCoord.xy), 0);
 		if (z0 < 1.0 && translucentOut.a > 0.0) {
 			uvec4 td = imageLoad(wsrTrans_img, ivec2(gl_FragCoord.xy));
 			if (td.w != 0u && abs(uintBitsToFloat(td.w) - z0) < 1e-6) {
 				vec2 baseBW = unpackHalf2x16(td.y);
 				vec3 base = vec3(unpackHalf2x16(td.x), baseBW.x);
-				vec3 rayDir = WsrOctDecode(unpackSnorm2x16(td.z));
 
-				vec3 surfPos = mat3(gbufferModelViewInverse) * toScreenSpace(vec3(texcoord/RENDER_SCALE - TAA_Offset*texelSize*0.5, z0)) + gbufferModelViewInverse[3].xyz;
-				vec3 viewDir = normalize(surfPos - gbufferModelViewInverse[3].xyz);
-				vec3 surfNormal = normalize(rayDir - viewDir);
+				#ifdef REFL_PREPASS_MIRROR
+					vec4 env = ReflUpsample(1, float(REFLECTION_RES_MIRROR) * 0.01, depthtex0, z0);
+				#else
+					vec4 env = vec4(0.0, 0.0, 0.0, -1.0);
+				#endif
+				// No prepass sample covers this pixel (thin edges at low resolution, or no prepass): trace it here.
+				if (env.a < 0.0) {
+					vec3 rayDir = WsrOctDecode(unpackSnorm2x16(td.z));
+					vec3 viewPosS = toScreenSpace(vec3(texcoord/RENDER_SCALE - TAA_Offset*texelSize*0.5, z0));
+					vec3 surfPos = mat3(gbufferModelViewInverse) * viewPosS + gbufferModelViewInverse[3].xyz;
+					vec3 viewDir = normalize(surfPos - gbufferModelViewInverse[3].xyz);
+					vec3 surfNormal = normalize(rayDir - viewDir);
 
-				wsrSunColor = lightCol.rgb / 2400.0;
-				wsrAmbientColor = averageSkyCol_Clouds / 900.0;
-				wsrSunDir = WsunVec;
-				wsrTracePlayer = false; // the water pass already traced the player
-				vec4 wsr = BlissWSR(surfPos, surfNormal, rayDir);
-				translucentOut.rgb += baseBW.y * wsr.a * (wsr.rgb - base) * 0.1;
+					wsrSunColor = lightCol.rgb / 2400.0;
+					wsrAmbientColor = averageSkyCol_Clouds / 900.0;
+					wsrSunDir = WsunVec;
+					env = MirrorEnvironment(viewPosS, surfPos, surfNormal, rayDir, baseBW.y < 0.0, noise);
+				}
+				translucentOut.rgb += abs(baseBW.y) * env.a * (env.rgb - base) * 0.1;
 				#if DEBUG_VIEW == debug_WSR
-					translucentOut.rgb = vec3(0.0, 1.0, 0.0) * (0.2 + wsr.a);
+					translucentOut.rgb = vec3(0.0, 1.0, 0.0) * (0.2 + env.a);
 				#endif
 			}
 			#if DEBUG_VIEW == debug_WSR
@@ -1711,3 +1790,6 @@ void main() {
 		/* RENDERTARGETS:3 */
 	#endif
 }
+#else
+	#include "/lib/voxelization/reflectionPrepass.glsl"
+#endif

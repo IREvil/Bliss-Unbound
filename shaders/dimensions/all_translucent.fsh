@@ -184,8 +184,6 @@ uniform float waterEnteredAltitude;
 #endif
 #ifdef WSR_DEFER_FORWARD
 	layout(rgba32ui) uniform writeonly uimage2D wsrTrans_img;
-	// The player is traced here, against the SSR hit; the deferred resolve only fills in terrain.
-	#include "/lib/voxelization/playerRef.glsl"
 #endif
 
 #if defined TRANSLUCENT_ACT && defined CONNECTED_GLASS_EFFECT && defined IPBR
@@ -960,7 +958,7 @@ if (gl_FragCoord.x * texelSize.x < 1.0  && gl_FragCoord.y * texelSize.y < 1.0 )	
 
 			#ifdef WSR_DEFER_FORWARD
 				// Depth rides along so the resolve can reject pixels where a different translucent layer won.
-				if (wsrDeferWeight > 0.002) {
+				if (abs(wsrDeferWeight) > 0.002) {
 					vec3 deferBase = clamp(wsrDeferBase, 0.0, 60000.0); // half-float range
 					imageStore(wsrTrans_img, ivec2(gl_FragCoord.xy), uvec4(packHalf2x16(deferBase.rg), packHalf2x16(vec2(deferBase.b, wsrDeferWeight)),
 						packSnorm2x16(WsrOctEncode(wsrDeferDir)), floatBitsToUint(gl_FragCoord.z)));

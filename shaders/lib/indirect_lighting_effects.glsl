@@ -44,7 +44,12 @@ vec4 BilateralUpscale_SSAO(sampler2D tex, sampler2D depth, vec2 coord, float ref
 	ivec2 scaling = ivec2(1.0);
 	ivec2 posDepth  = ivec2(coord) * scaling;
 	ivec2 posColor  = ivec2(coord);
-  	ivec2 pos = ivec2(gl_FragCoord.xy*texelSize + 1);
+	// FRAGCOORD: composite1.fsh maps it to the compute prepass' pixel.
+	#ifdef FRAGCOORD
+		ivec2 pos = ivec2(FRAGCOORD.xy*texelSize + 1);
+	#else
+		ivec2 pos = ivec2(gl_FragCoord.xy*texelSize + 1);
+	#endif
 
 	ivec2 getRadius[4] = ivec2[](
    	 	ivec2(-2,-2),
