@@ -8,6 +8,8 @@ layout(local_size_x = 8, local_size_y = 8) in;
 uniform float sunElevation;
 uniform vec3 sunPosition;
 uniform vec3 moonPosition;
+uniform int framemod8;
+#include "/lib/TAA_jitter.glsl"
 
 #if REFL_PREPASS == 1
 	#define REFL_RES REFLECTION_RES_WORLD
@@ -43,7 +45,11 @@ void main() {
 	WmoonVec = dot(-moonVec, unsigned_WsunVec) < 0.9999 ? -moonVec : moonVec;
 	WsunVec = mix(WmoonVec, unsigned_WsunVec, clamp(lightCol.a, 0.0, 1.0));
 	zMults = vec3(1.0 / (far * near), far + near, far - near);
-	TAA_Offset = vec2(0.0);
+	#ifdef TAA
+		TAA_Offset = offsets[framemod8];
+	#else
+		TAA_Offset = vec2(0.0);
+	#endif
 
 	vec3 directLightColor = lightCol.rgb / 2400.0;
 	vec3 ambientLightColor = averageSkyCol_Clouds / 900.0;
@@ -59,7 +65,10 @@ void main() {
 	#else
 		int seed = 600;
 	#endif
-	vec2 BN = fract(R2_samples(seed).xy + blueNoise(prepassFragCoord.xy).rg);
+	// Blue noise indexed by the LOW-res texel: sampling it at the full-res pixel stride would turn it into white noise,
+	// which the upsample cannot filter.
+	vec2 BN = fract(R2_samples(seed).xy + blueNoise(vec2(lo)).rg);
+	float noiseZ = fract(texelFetch2D(noisetex, lo % 512, 0).a + 1.0 / 1.6180339887 * float(frameCounter % 1000));
 
 	float z0 = texelFetch2D(depthtex0, px, 0).x;
 	vec4 result = vec4(0.0, 0.0, 0.0, -1.0);
@@ -88,7 +97,7 @@ void main() {
 			wsrAmbientColor = ambientLightColor;
 			specBehindTranslucent = z0 < z && !hand && texelFetch2D(colortex2, px, 0).a > 0.0;
 
-			specularReflections(viewPos, feetPlayerPos_normalized, WsunVec, vec3(BN.xy, blueNoise()), specularNormal,
+			specularReflections(viewPos, feetPlayerPos_normalized, WsunVec, vec3(BN.xy, noiseZ), specularNormal,
 				SpecularTex.r, SpecularTex.g, vec3(0.0), vec3(0.0), vec3(0.0), lightmap.y, hand, vec4(0.0));
 			result = reflPrepassOut;
 		}

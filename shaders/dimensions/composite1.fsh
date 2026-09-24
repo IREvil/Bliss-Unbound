@@ -857,26 +857,39 @@ void applyPuddles(
 		return imageLoad(reflWorld_img, c);
 	}
 
-	// Depth-aware bilinear upsample of a prepass image traced at `scale`; a < 0 when no sample lies on this surface.
-	vec4 ReflUpsample(int which, float scale, sampler2D depthTex, float refDepth) {
+	// Depth-aware upsample of a prepass image traced at `scale`; a < 0 when no sample lies on this surface.
+	// blur 0 = bilinear (2x2), 1 = tent over 4x4 low-res texels (rough surfaces: averages the per-sample ray jitter).
+	// refDir (mirrors): taps whose recorded reflection ray differs from this pixel's are down-weighted.
+	vec4 ReflUpsample(int which, float scale, sampler2D depthTex, float refDepth, float blur, vec3 refDir) {
 		vec2 screen = vec2(viewWidth, viewHeight);
 		ivec2 loMax = ivec2(ceil(screen * scale)) - 1;
 		vec2 lo = gl_FragCoord.xy * scale - 0.5;
 		ivec2 lo0 = ivec2(floor(lo));
-		vec2 f = lo - vec2(lo0);
+		float radius = 1.0 + blur;
 		float refL = ld(refDepth);
 
 		vec4 sum = vec4(0.0);
 		float weightSum = 0.0;
-		for (int i = 0; i < 4; i++) {
-			ivec2 o = ivec2(i & 1, i >> 1);
+		for (int i = 0; i < 16; i++) {
+			ivec2 o = ivec2(i & 3, i >> 2) - 1;
+			vec2 d = abs(vec2(lo0 + o) - lo);
+			float w = max(1.0 - d.x / radius, 0.0) * max(1.0 - d.y / radius, 0.0);
+			if (w <= 0.0) continue;
+
 			ivec2 c = clamp(lo0 + o, ivec2(0), loMax);
 			vec4 v = ReflLoad(which, c);
 			if (v.a < 0.0) continue;
 			ivec2 rep = min(ivec2((vec2(c) + 0.5) / scale), ivec2(screen) - 1);
 			if (abs(ld(texelFetch2D(depthTex, rep, 0).x) - refL) > refL * 0.05 + 1e-4) continue;
-			vec2 b = mix(1.0 - f, f, vec2(o));
-			float w = b.x * b.y + 1e-4;
+			#ifdef WSR_DEFER_RESOLVE
+				if (which == 1) {
+					vec3 tapDir = WsrOctDecode(unpackSnorm2x16(imageLoad(wsrTrans_img, rep).z));
+					float cosDir = dot(tapDir, refDir);
+					if (cosDir < 0.8) continue;
+					w *= pow(max(cosDir, 0.0), 16.0);
+				}
+			#endif
+			w += 1e-4;
 			sum += v * w;
 			weightSum += w;
 		}
@@ -1534,7 +1547,8 @@ void main() {
 			// Terrain seen through water or glass already gets that surface's own reflection; tracing its own stacked a second SSR/WSR per pixel (upstream skips it too).
 			specBehindTranslucent = z0 < z && !hand && texelFetch2D(colortex2, ivec2(gl_FragCoord.xy), 0).a > 0.0;
 			#ifdef REFL_PREPASS_WORLD
-				reflWorldFetched = ReflUpsample(0, float(REFLECTION_RES_WORLD) * 0.01, depthtex1, texelFetch2D(depthtex1, ivec2(gl_FragCoord.xy), 0).x);
+				reflWorldFetched = ReflUpsample(0, float(REFLECTION_RES_WORLD) * 0.01, depthtex1, texelFetch2D(depthtex1, ivec2(gl_FragCoord.xy), 0).x,
+					clamp((1.0 - SpecularTex.r) * 2.0, 0.0, 1.0), vec3(0.0));
 				reflWorldFetched.a = max(reflWorldFetched.a, 0.0);
 			#endif
 			FINAL_COLOR = specularReflections(viewPos, feetPlayerPos_normalized, WsunVec, specularNoises, specularNormal, SpecularTex.r, SpecularTex.g, albedo, FINAL_COLOR, DirectLightColor*shadowColor, lightmap.y, hand, flashLightSpecularData);
@@ -1754,7 +1768,7 @@ void main() {
 				vec3 base = vec3(unpackHalf2x16(td.x), baseBW.x);
 
 				#ifdef REFL_PREPASS_MIRROR
-					vec4 env = ReflUpsample(1, float(REFLECTION_RES_MIRROR) * 0.01, depthtex0, z0);
+					vec4 env = ReflUpsample(1, float(REFLECTION_RES_MIRROR) * 0.01, depthtex0, z0, 0.0, WsrOctDecode(unpackSnorm2x16(td.z)));
 				#else
 					vec4 env = vec4(0.0, 0.0, 0.0, -1.0);
 				#endif
