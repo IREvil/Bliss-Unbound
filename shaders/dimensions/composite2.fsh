@@ -59,8 +59,12 @@ uniform float caveDetection;
 
 // uniform int dhRenderDistance;
 #define DHVLFOG
+#ifndef diagonal3
 #define diagonal3(m) vec3((m)[0].x, (m)[1].y, m[2].z)
+#endif
+#ifndef projMAD
 #define  projMAD(m, v) (diagonal3(m) * (v) + (m)[3].xyz)
+#endif
 
 #include "/lib/color_transforms.glsl"
 #include "/lib/color_dither.glsl"
@@ -83,9 +87,7 @@ float linearizeDepthFast(const in float depth, const in float near, const in flo
     return (near * far) / (depth * (near - far) + far);
 }
 
-#define IS_LPV_ENABLED
-
-#if defined LPV_VL_FOG_ILLUMINATION && defined IS_LPV_ENABLED
+#if defined BLOCKLIGHT_FOG && !defined BLOCKLIGHT_FOG_ACT
 	
 	flat varying float exposure;
 
@@ -138,6 +140,37 @@ float linearizeDepthFast(const in float depth, const in float near, const in flo
 		return color;
 	}
 
+#endif
+
+#ifdef BLOCKLIGHT_FOG_ACT
+	flat varying float exposure;
+
+	uniform usampler3D voxel_sampler;
+	uniform sampler3D floodfill_sampler;
+	uniform sampler3D floodfill_sampler_copy;
+	uniform int framemod2;
+	vec3 cameraPositionBestFract = fract(cameraPosition);
+
+	#include "/lib/voxelization/act_common.glsl"
+	#include "/lib/voxelization/lightVoxelization.glsl"
+
+	// Same interface as the LPV version, so the fog loops need no changes.
+	vec3 LPV_FOG_ILLUMINATION(in vec3 playerPos, float dd, float dL){
+		vec3 voxelPos = SceneToVoxel(playerPos);
+		if (!CheckInsideVoxelVolume(voxelPos)) return vec3(0.0);
+
+		// The volume stores squared colour; the fourth root spreads the glow the way upstream's light fog does.
+		vec3 light = pow(max(GetLightVolume(clamp01(voxelPos / vec3(voxelVolumeSize))).rgb, vec3(0.0)), vec3(0.25));
+
+		float maxDist = min(effectiveACTdistance * 0.5, far);
+		vec3 fadePos = vec3(playerPos.x, playerPos.y * 2.0, playerPos.z);
+		light *= max(1.0 - length(fadePos) / maxDist, 0.0);
+
+		// Upstream averages the light over the ACT range (not a density-driven medium) and scales by FOG_I*0.5.
+		// dd*dL is this step's length in blocks, so the loop sum is that same length-weighted average.
+		// The extra x3 matches upstream's on-screen strength against Bliss' night exposure (A/B captured).
+		return light * (COLORED_LIGHT_FOG_I * 1.5) * (dd * dL / maxDist);
+	}
 #endif
 float invLinZ (float lindepth){
 	return -((2.0*near/lindepth)-far-near)/(far-near);
@@ -378,6 +411,14 @@ float encodeVec2(vec2 a){
 uniform int framemod8;
 #include "/lib/TAA_jitter.glsl"
 
+// Runs after the lighting pass has traced the player; the next shadow pass rebuilds the bounds.
+#if defined PLAYER_REF_CLEAR && COLORED_LIGHTING_INTERNAL > 0 && WORLD_SPACE_REFLECTIONS_INTERNAL > 0 && WORLD_SPACE_PLAYER_REF == 1
+	#extension GL_ARB_shader_storage_buffer_object : enable
+	#extension GL_ARB_shading_language_420pack : enable
+	#include "/lib/voxelization/SSBOs/clearSSBOs.glsl"
+	#define DO_PLAYER_REF_CLEAR
+#endif
+
 float convertHandDepth(float depth) {
     float ndcDepth = depth * 2.0 - 1.0;
     ndcDepth /= MC_HAND_DEPTH;
@@ -483,6 +524,9 @@ vec4 raymarchTest(
 
 
 void main() {
+	#ifdef DO_PLAYER_REF_CLEAR
+		clearSSBOs();
+	#endif
 
 	/* RENDERTARGETS:0 */
 

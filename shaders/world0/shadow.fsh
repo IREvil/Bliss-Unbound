@@ -7,6 +7,9 @@ varying vec4 color;
 varying vec2 texcoord;
 uniform sampler2D tex;
 uniform sampler2D noisetex;
+#ifdef CONNECTED_GLASS_EFFECT
+	varying vec2 shadowCGSprite;
+#endif
 
 //////////////////////////////VOID MAIN//////////////////////////////
 //////////////////////////////VOID MAIN//////////////////////////////
@@ -20,8 +23,13 @@ float blueNoise(){
 
 
 void main() {
+	vec2 shadowUV = texcoord.xy;
+	#ifdef CONNECTED_GLASS_EFFECT
+		// Complementary's DoSimpleConnectedGlass: one texel off the sprite centre.
+		if (shadowCGSprite.x > 0.0) shadowUV = (floor(shadowUV / shadowCGSprite) + 0.4375) * shadowCGSprite;
+	#endif
 	
-	vec4 shadowColor = vec4(texture2D(tex,texcoord.xy).rgb * color.rgb,  texture2DLod(tex, texcoord.xy, 0).a);
+	vec4 shadowColor = vec4(texture2D(tex,shadowUV).rgb * color.rgb,  texture2DLod(tex, shadowUV, 0).a);
 
 	#ifdef TRANSLUCENT_COLORED_SHADOWS
 		if(shadowColor.a > 0.9999) shadowColor.rgb = vec3(0.0);

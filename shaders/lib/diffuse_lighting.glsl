@@ -1,3 +1,4 @@
+#include "/lib/ipbr/id_decode.glsl"
 #ifdef IS_LPV_ENABLED
     vec3 GetHandLight(const in int itemId, const in vec3 playerPos, const in vec3 normal) {
         vec3 lightFinal = vec3(0.0);
@@ -57,10 +58,10 @@ vec3 doBlockLightLighting(
             const vec3 normal = vec3(0.0); // TODO
 
                 if (heldItemId > 0)
-                blockLight += GetHandLight(heldItemId, playerPos, normal);
+                blockLight += GetHandLight(DecodeBlissItemIdInt(heldItemId), playerPos, normal);
 
                 if (heldItemId2 > 0)
-                blockLight += GetHandLight(heldItemId2, playerPos, normal);
+                blockLight += GetHandLight(DecodeBlissItemIdInt(heldItemId2), playerPos, normal);
         #endif
     #endif
 

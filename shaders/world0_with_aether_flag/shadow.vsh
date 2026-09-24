@@ -1,7 +1,12 @@
-#version 120
+#version 330 compatibility
 #include "/lib/settings.glsl"
+#include "/lib/ipbr/ipbr_settings.glsl"
+#include "/lib/ipbr/id_decode.glsl"
 #ifdef IS_LPV_ENABLED
 	#extension GL_ARB_explicit_attrib_location: enable
+	#extension GL_ARB_shader_image_load_store: enable
+#endif
+#if COLORED_LIGHTING_INTERNAL > 0
 	#extension GL_ARB_shader_image_load_store: enable
 #endif
 
@@ -53,7 +58,7 @@ uniform int entityId;
 #include "/lib/blocks.glsl"
 #include "/lib/entities.glsl"
 
-#ifdef IS_LPV_ENABLED
+#if defined IS_LPV_ENABLED || COLORED_LIGHTING_INTERNAL > 0
 	#ifdef IRIS_FEATURE_BLOCK_EMISSION_ATTRIBUTE
 		attribute vec4 at_midBlock;
 	#else
@@ -62,8 +67,39 @@ uniform int entityId;
     uniform int currentRenderedItemId;
 	uniform int renderStage;
 
+	#include "/lib/items.glsl"
+	#include "/lib/ipbr/ipbr_settings.glsl"
+	#include "/lib/ipbr/id_decode.glsl"
+#endif
+
+#ifdef IS_LPV_ENABLED
 	#include "/lib/voxel_common.glsl"
 	#include "/lib/voxel_write.glsl"
+#endif
+
+// Complementary's ACT light volume.  Separate from Bliss' LPV above; the two are
+// mutually exclusive (see the IS_LPV_ENABLED gate in settings.glsl), so at most
+// one of these two branches is ever active.
+#if COLORED_LIGHTING_INTERNAL > 0
+	layout(r16ui) uniform writeonly uimage3D voxel_img;
+	uniform usampler3D voxel_sampler;
+	uniform sampler3D floodfill_sampler;
+	uniform sampler3D floodfill_sampler_copy;
+	uniform int framemod2;
+	// Iris 1.8+ can supply cameraPositionFract, but it is not declared in every
+	// program, and this must compile wherever the voxeliser is used.  fract of
+	// cameraPosition is equivalent and always available.
+	vec3 cameraPositionBestFract = fract(cameraPosition);
+
+	// lightVoxelization.glsl gates its write entry point on these, which
+	// Complementary's shadow program defines for itself.  Scoped to the include
+	// and undone after, so they cannot change how Bliss' code below compiles.
+	#define VERTEX_SHADER
+	#define SHADOW
+	#include "/lib/voxelization/act_common.glsl"
+	#include "/lib/voxelization/lightVoxelization.glsl"
+	#undef SHADOW
+	#undef VERTEX_SHADER
 #endif
 
 const float PI48 = 150.796447372*WAVY_SPEED;
@@ -114,8 +150,12 @@ bool intersectCone(float coneHalfAngle, vec3 coneTip , vec3 coneAxis, vec3 rayOr
 
   return true;
 }
+#ifndef diagonal3
 #define diagonal3(m) vec3((m)[0].x, (m)[1].y, m[2].z)
+#endif
+#ifndef projMAD
 #define  projMAD(m, v) (diagonal3(m) * (v) + (m)[3].xyz)
+#endif
 
 
 
@@ -206,6 +246,16 @@ void main() {
 		PopulateShadowVoxel(playerpos);
 	#endif
 
+	// ACT light volume write.  mat is Iris' block id, which is what the
+	// ported lightVoxelization table is keyed on.
+	//
+	// Deliberately OUTSIDE the LPV guard above: ACT and Bliss' LPV are
+	// mutually exclusive, so nesting this inside IS_LPV_ENABLED compiled the
+	// write away whenever ACT was on, leaving the volume empty here.
+	#if COLORED_LIGHTING_INTERNAL > 0
+		UpdateVoxelMap(int(mc_Entity.x + 0.5));
+	#endif
+
 	// #ifdef WAVY_PLANTS
   	// 	bool istopv = gl_MultiTexCoord0.t < mc_midTexCoord.t;
   	// 	if (
@@ -225,7 +275,8 @@ void main() {
   	// 	}
 	// #endif
 
-	int blockId = int(mc_Entity.x + 0.5);
+	// Iris gives Complementary's numbering; the waving categories below are Bliss'.
+	int blockId = DecodeBlissBlockIdInt(int(mc_Entity.x + 0.5));
 
 	vec3 worldpos = playerpos;
 	#ifdef WAVY_PLANTS
@@ -275,4 +326,10 @@ void main() {
 	if (blockId == BLOCK_WATER) gl_Position.w = -1.0;
 
   	gl_Position.z /= 6.0;
+
+	#if ACT_DEBUG_BREAK_SHADOW == 1
+		// Diagnostics: clip EVERYTHING off-screen so no shadow is cast at all.
+		// Must be LAST in main(), after gl_Position is final, or it is overwritten.
+		gl_Position = vec4(3.0, 3.0, 3.0, 1.0);
+	#endif
 }

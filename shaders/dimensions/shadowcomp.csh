@@ -2,6 +2,72 @@
 
 layout (local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
+// Complementary's ACT floodfill takes over this pass when it is enabled.  It is
+// the same kind of work as Bliss' LPV floodfill below -- spreading light through
+// a voxel volume -- which is why the two are mutually exclusive rather than
+// sharing the pass: IS_LPV_ENABLED is switched off by settings.glsl whenever
+// COLORED_LIGHTING_INTERNAL > 0.
+#if COLORED_LIGHTING_INTERNAL > 0
+    layout(rgba16f) uniform writeonly image3D floodfill_img;
+    layout(rgba16f) uniform writeonly image3D floodfill_img_copy;
+
+    // lightVoxelization.glsl comes in via actFloodfill.glsl for the volume
+    // layout and the voxel read helpers, and it expects these from its host --
+    // the same set the shadow programs supply.
+    uniform usampler3D voxel_sampler;
+    // voxel_sampler reads back all zeros in this pass (verified in game); imageLoad sees the ids.
+    layout(r16ui) uniform readonly uimage3D voxel_img;
+    #define ACT_VOXEL_IMAGE_READ
+    uniform int framemod2;
+    uniform vec3 cameraPosition;
+    uniform vec3 previousCameraPosition;
+    // Used by the behind-player optimisation, which needs the view direction.
+    uniform mat4 gbufferProjectionInverse;
+    uniform mat4 gbufferModelViewInverse;
+    // fract(cameraPosition) rather than Iris' cameraPositionFract, which is not
+    // declared in every program this has to compile in.
+    vec3 cameraPositionBestFract = fract(cameraPosition);
+
+    #define OPTIMIZATION_ACT_BEHIND_PLAYER
+    #define OPTIMIZATION_ACT_HALF_RATE_SPREADING
+    //#define OPTIMIZATION_ACT_SHARED_MEMORY
+
+    #include "/lib/voxelization/act_common.glsl"
+    #include "/lib/voxelization/actFloodfill.glsl"
+
+    // Iris parses `workGroups` as a directive and requires a literal ivec3
+    // constructor, so this cannot be a reference or an expression -- it has to
+    // be one of these.  The sizes are exactly those ACT_DISTANCE can produce
+    // (chunks x 16), and the values are upstream's formula
+    // ivec3(N/8, min(N/16, 32), N/8), verified against Complementary's own
+    // 128..1024 table.
+    #if   COLORED_LIGHTING_INTERNAL == 64
+        const ivec3 workGroups = ivec3(8, 4, 8);
+    #elif COLORED_LIGHTING_INTERNAL == 96
+        const ivec3 workGroups = ivec3(12, 6, 12);
+    #elif COLORED_LIGHTING_INTERNAL == 128
+        const ivec3 workGroups = ivec3(16, 8, 16);
+    #elif COLORED_LIGHTING_INTERNAL == 160
+        const ivec3 workGroups = ivec3(20, 10, 20);
+    #elif COLORED_LIGHTING_INTERNAL == 192
+        const ivec3 workGroups = ivec3(24, 12, 24);
+    #elif COLORED_LIGHTING_INTERNAL == 256
+        const ivec3 workGroups = ivec3(32, 16, 32);
+    #elif COLORED_LIGHTING_INTERNAL == 320
+        const ivec3 workGroups = ivec3(40, 20, 40);
+    #elif COLORED_LIGHTING_INTERNAL == 384
+        const ivec3 workGroups = ivec3(48, 24, 48);
+    #elif COLORED_LIGHTING_INTERNAL == 448
+        const ivec3 workGroups = ivec3(56, 28, 56);
+    #elif COLORED_LIGHTING_INTERNAL == 512
+        const ivec3 workGroups = ivec3(64, 32, 64);
+    #else
+        const ivec3 workGroups = ivec3(16, 8, 16);
+    #endif
+
+    void main() { DoActFloodfill(); }
+#else
+
 #if   LPV_SIZE == 8
     const ivec3 workGroups = ivec3(32, 32, 32);
 #elif LPV_SIZE == 7
@@ -163,3 +229,5 @@ void main() {
             imageStore(imgLpv2, imgCoord, lightValue);
     #endif
 }
+
+#endif // COLORED_LIGHTING_INTERNAL > 0

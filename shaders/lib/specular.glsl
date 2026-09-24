@@ -88,6 +88,34 @@ vec3 GGX(vec3 n, vec3 v, vec3 l, float r, vec3 f0, vec3 metalAlbedoTint) {
   return dotNL * D * F / (dotLH*dotLH*(1.0-k2)+k2);
 }
 
+// Complementary's sun highlight (lib/lighting/ggx.glsl): fixed 0.05 F0, roughness floor, soft-capped at 8.
+// viewDir points from the camera to the surface.
+float IpbrHighlight(vec3 n, vec3 viewDir, vec3 l, float smoothnessG) {
+	float NdotL = clamp(dot(n, l), 0.0, 1.0);
+	if (NdotL <= 0.0) return 0.0;
+
+	float s = smoothnessG * 0.9 + 0.1;
+	s = s * (2.0 - s);
+	float r = 1.35 - s;
+	r *= r; r *= r;
+
+	vec3 h = normalize(l - viewDir);
+	float dotLH = clamp(dot(h, l), 0.0, 1.0);
+	float dotNH = clamp(dot(n, h), 0.0, 1.0);
+	dotNH *= dotNH;
+
+	float denom = dotNH * r - dotNH + 1.0;
+	float D = r / (3.141592653589793 * denom * denom);
+	float F = exp2((-5.55473 * dotLH - 6.98316) * dotLH) * 0.95 + 0.05;
+
+	float NdotLM = 1.0 - NdotL * NdotL;
+	NdotLM *= NdotLM; NdotLM *= NdotLM; NdotLM *= NdotLM;
+	NdotLM = 1.0 - NdotLM;
+
+	float spec = max(NdotLM * D * F / max(dotLH * dotLH, 1e-4), 0.0);
+	return spec / (0.125 * spec + 1.0);
+}
+
 float shlickFresnelRoughness(float XdotN, float roughness){
 
 	float shlickFresnel = clamp(1.0 + XdotN,0.0,1.0);
@@ -112,6 +140,13 @@ vec3 rayTraceSpeculars(vec3 dir, vec3 position, float dither, float quality, boo
 
 	#if FORWARD_SSR_QUALITY == 1
 		return reflectedTC;
+	#endif
+
+	// The hand's march result is discarded below; only its step count feeds the blur.
+	if(hand) { reflectionLength = 1.0; return reflectedTC; }
+	#if DEFERRED_SSR_QUALITY != 1
+		// Rays aimed back at the camera stay on screen and rarely hit anything, so they ran every step (dead-on views, water below).
+		if(dir.z > 0.7) return vec3(1.1);
 	#endif
 
 	//get at which length the ray intersects with the edge of the screen
@@ -164,6 +199,33 @@ vec3 rayTraceSpeculars(vec3 dir, vec3 position, float dither, float quality, boo
 	return hitPos;
 }
 
+// Set by screenSpaceReflections: distance to the hit along the ray, how far it sits off the ray, and its camera distance.
+float ssrHitDist = -1.0;
+float ssrHitError = 1e9;
+float ssrHitCamDist = 0.0;
+
+// Set by composite1 when a translucent (water, glass) covers the pixel: its own forward pass already traced a reflection there.
+bool specBehindTranslucent = false;
+
+#if defined WSR_DEFER_FORWARD || defined WSR_DEFER_RESOLVE
+	// Forward pass -> lighting composite: the reflection colour a WSR hit replaces, its weight, and the ray.
+	vec3 wsrDeferBase = vec3(0.0);
+	float wsrDeferWeight = 0.0;
+	vec3 wsrDeferDir = vec3(0.0, 1.0, 0.0);
+
+	vec2 WsrOctEncode(vec3 n) {
+		n /= abs(n.x) + abs(n.y) + abs(n.z);
+		vec2 e = n.xz;
+		if (n.y < 0.0) e = (1.0 - abs(e.yx)) * vec2(n.x >= 0.0 ? 1.0 : -1.0, n.z >= 0.0 ? 1.0 : -1.0);
+		return e;
+	}
+	vec3 WsrOctDecode(vec2 e) {
+		vec3 n = vec3(e.x, 1.0 - abs(e.x) - abs(e.y), e.y);
+		if (n.y < 0.0) n.xz = (1.0 - abs(n.zx)) * vec2(n.x >= 0.0 ? 1.0 : -1.0, n.z >= 0.0 ? 1.0 : -1.0);
+		return normalize(n);
+	}
+#endif
+
 vec4 screenSpaceReflections(
 	vec3 reflectedVector,
 	vec3 viewPos,
@@ -185,7 +247,17 @@ vec4 screenSpaceReflections(
 	#endif
 
 	vec3 raytracePos = rayTraceSpeculars(reflectedVector, viewPos, noise, quality, isHand, reflectionLength);
+	ssrHitDist = -1.0;
+	ssrHitError = 1e9;
 	if (raytracePos.z > 1.0) return reflection;
+
+	if (raytracePos.z < 0.999999) {
+		vec3 hitViewPos = toScreenSpace(raytracePos);
+		vec3 hitOffset = hitViewPos - viewPos;
+		ssrHitDist = dot(hitOffset, normalize(reflectedVector));
+		ssrHitError = length(hitOffset - ssrHitDist * normalize(reflectedVector));
+		ssrHitCamDist = length(hitViewPos);
+	}
 
 	// use higher LOD as the reflection goes on, to blur it. this helps denoise a little.
 	reflectionLength = min(max(reflectionLength - 0.1, 0.0)/0.9, 1.0);
@@ -317,6 +389,33 @@ vec3 specularReflections(
 	roughness = 1.0 - roughness; 
 	roughness *= roughness;
 
+	float highlightRoughness = roughness;
+	#if IPBR_MODE == 1 && defined DEFERRED_SPECULAR && !defined FORWARD_SPECULAR
+		bool ipbrIntense = false;
+		bool ipbrDielectric = f0 < 229.5/255.0;
+		float ipbrSmoothnessG = 0.0;
+		vec3 ipbrReflectColor = vec3(1.0);
+		if (ipbrDielectric) {
+			// all_solid.fsh packs dielectrics as 0.45 intense flag + 0.44 * smoothnessG.
+			ipbrIntense = f0 > 0.445;
+			ipbrSmoothnessG = clamp((f0 - (ipbrIntense ? 0.45 : 0.0)) / 0.44, 0.0, 1.0);
+			highlightRoughness = (1.0 - ipbrSmoothnessG) * (1.0 - ipbrSmoothnessG);
+			f0 = 0.04;
+		} else {
+			// Codes 234/231/230 are Comp's copper/gold/redstone fresnel: intense dielectrics with a tinted reflection
+			// (deferredIPBR.glsl), not metals. As Bliss metals they lost their diffuse and went black at grazing angles.
+			float ipbrS = 1.0 - sqrt(roughness);
+			int ipbrCode = int(f0 * 255.0 + 0.5);
+			if (ipbrCode == 234) ipbrReflectColor = mix(vec3(0.5, 0.75, 0.5), vec3(1.0, 0.45, 0.3), ipbrS * (2.0 - ipbrS));
+			else if (ipbrCode == 231) ipbrReflectColor = vec3(1.0, 0.8, 0.5);
+			else if (ipbrCode == 230) ipbrReflectColor = vec3(1.0, 0.3, 0.2);
+			ipbrIntense = true;
+			ipbrDielectric = true;
+			ipbrSmoothnessG = ipbrS;
+			f0 = 0.04;
+		}
+	#endif
+
 	f0 = f0 == 0.0 ? 0.02 : f0;
 
 	// f0 = 0.1;
@@ -329,8 +428,15 @@ vec3 specularReflections(
 	vec3 viewDir = -playerPos*basis;
 
 	#if defined FORWARD_ROUGH_REFLECTION || defined DEFERRED_ROUGH_REFLECTION
-		vec3 samplePoints = SampleVNDFGGX(viewDir, roughness, noise.xy);
-		vec3 reflectedVector_L = basis * reflect(-normalize(viewDir), samplePoints);
+		#if IPBR_MODE == 1 && defined DEFERRED_SPECULAR && !defined FORWARD_SPECULAR
+			// Upstream's bounded normal jitter (composite.glsl): GGX's long tail sends rays into bright HDR hits -> fireflies.
+			vec3 roughJitter = vec3(noise.xy, fract(noise.x + noise.y * 0.618034)) - 0.5;
+			vec3 reflectedVector_L = reflect(playerPos, normalize(normal + 0.3 * roughness * roughJitter));
+			if (dot(reflectedVector_L, normal) < 0.0) reflectedVector_L = reflect(playerPos, normal);
+		#else
+			vec3 samplePoints = SampleVNDFGGX(viewDir, roughness, noise.xy);
+			vec3 reflectedVector_L = basis * reflect(-normalize(viewDir), samplePoints);
+		#endif
 
 		reflectedVector_L = isHand ? reflect(playerPos, normal) : reflectedVector_L;
 	#else
@@ -349,6 +455,16 @@ vec3 specularReflections(
 	vec3 reflectance = isMetal ? hardCodedMetalsF0 : vec3(f0);
 	vec3 F0 = (reflectance + (1.0-reflectance) * shlickFresnel) * metalAlbedoTint;
 
+	#if IPBR_MODE == 1 && defined DEFERRED_SPECULAR && !defined FORWARD_SPECULAR
+		// Complementary's reflection weight (deferred1.glsl): fresnel * sqrt1(smoothnessD), sqrt1(x) = x * (2 - x).
+		if (!isMetal) {
+			float fresnelC = clamp(1.0 + VdotN, 0.0, 1.0) * 0.7 + 0.3;
+			fresnelC = ipbrIntense ? fresnelC * 0.75 + 0.25 * IPBR_INTENSE_FRESNEL_MULT * 0.01 : fresnelC * fresnelC;
+			float smoothnessD = max(1.0 - sqrt(roughness), 0.0);
+			F0 = vec3(fresnelC * smoothnessD * (2.0 - smoothnessD) * IPBR_SPECULAR_STRENGTH * 0.01);
+		}
+	#endif
+
 	#if defined FORWARD_SPECULAR
 		reflectanceForAlpha = clamp(dot(F0, vec3(0.3333333)), 0.0,1.0);
 		
@@ -366,8 +482,17 @@ vec3 specularReflections(
 	vec3 specularReflections = diffuseLighting;
 
 	float reflectionVisibilty = getReflectionVisibility(f0, roughness);
+	#if IPBR_MODE == 1 && defined DEFERRED_SPECULAR && !defined FORWARD_SPECULAR
+		// Upstream reflects whenever the weight is non-zero, so gate on the weight rather than on smoothness.
+		if (!isMetal) reflectionVisibilty = 1.0 - clamp(F0.x / max(IPBR_REFLECTION_THRESHOLD, 1e-4) - 1.0, 0.0, 1.0);
+	#endif
 	#if defined DEFERRED_BACKGROUND_REFLECTION || defined FORWARD_BACKGROUND_REFLECTION || DEFERRED_SSR_QUALITY > 0 || FORWARD_SSR_QUALITY > 0
-		if(reflectionVisibilty < 1.0){
+		#if BLOCK_REFLECT_QUALITY == 0 && !defined FORWARD_SPECULAR
+			bool specEnvironmentOff = true; // LOW: sun and moon highlight only
+		#else
+			bool specEnvironmentOff = specBehindTranslucent;
+		#endif
+		if(reflectionVisibilty < 1.0 && !specEnvironmentOff){
 			
 			float backgroundReflectMask = lightmap;
 
@@ -382,7 +507,73 @@ vec3 specularReflections(
 				#endif
 			#endif
 			#if DEFERRED_SSR_QUALITY > 0 || FORWARD_SSR_QUALITY > 0
-				vec4 enviornmentReflection = screenSpaceReflections(mat3(gbufferModelView) * reflectedVector_L, viewPos, noise.z, isHand, roughness, backgroundReflectMask);
+				// Opaque surfaces always go WSR-first like upstream; mirrors (forward: glass, water, ice) follow the mode.
+				#ifdef FORWARD_SPECULAR
+					bool mirrorSkyOnly = isWater ? WATER_REFLECT_QUALITY < 0 : GLASS_REFLECT_QUALITY < 0; // POTATO: sky only
+				#else
+					const bool mirrorSkyOnly = false;
+				#endif
+				#if defined FORWARD_SPECULAR && WATER_REFLECT_QUALITY < 0 && GLASS_REFLECT_QUALITY < 0
+					vec4 enviornmentReflection = vec4(0.0);
+				#elif defined INCLUDE_BLISS_WSR && (WORLD_SPACE_REF_MODE == 1 || !defined FORWARD_SPECULAR)
+					vec4 enviornmentReflection = vec4(0.0);
+					wsrHitDist = -2.0;
+					if (!mirrorSkyOnly) {
+					if (!isHand) {
+						vec3 wsrPlayerPos = mat3(gbufferModelViewInverse) * viewPos + gbufferModelViewInverse[3].xyz;
+						enviornmentReflection = BlissWSR(wsrPlayerPos, normal, normalize(reflectedVector_L));
+					}
+					bool wsrHit = enviornmentReflection.a > 0.0;
+					bool wsrCovered = wsrHitDist > -1.5;
+
+					float ssrMask = backgroundReflectMask;
+					vec4 ssr = screenSpaceReflections(mat3(gbufferModelView) * reflectedVector_L, viewPos, noise.z, isHand, roughness, ssrMask);
+					// Upstream's rule: inside the volume SSR only adds what voxels lack (entities, plants), i.e. a hit that
+					// really lies on the ray and in front of the WSR hit, or anything past the volume.
+					float fresnelSSR = clamp(1.0 + VdotN, 0.0, 1.0);
+					bool ssrPlausible = ssrHitDist > 0.0 && ssrHitError * (1.0 - fresnelSSR) < 1.0 + ssrHitCamDist * 0.2;
+					bool ssrOnRay = ssrPlausible && ssrHitError < 0.5 + 0.03 * ssrHitDist;
+					bool ssrBeyond = ssrPlausible && ssrHitCamDist > 0.25 * float(COLORED_LIGHTING_INTERNAL);
+					bool ssrUsable = ssr.a > 0.0 && (ssrOnRay || ssrBeyond) && (!wsrHit || ssrHitDist < wsrHitDist - 0.3);
+
+					if (!wsrCovered) {
+						enviornmentReflection = ssr;
+						backgroundReflectMask = ssrMask;
+					} else if (ssrUsable) {
+						enviornmentReflection.rgb = mix(enviornmentReflection.rgb, ssr.rgb, ssr.a);
+						enviornmentReflection.a = max(enviornmentReflection.a, ssr.a);
+					}
+					#if DEBUG_VIEW == debug_WSR
+						if (!isHand) enviornmentReflection = vec4(wsrHit ? vec3(0.0, 10.0, 0.0) : ssrUsable ? vec3(0.0, 0.0, 10.0) : vec3(10.0, 0.0, 0.0), 1.0);
+					#endif
+					}
+				#else
+				vec4 enviornmentReflection = vec4(0.0);
+				if (!mirrorSkyOnly) {
+				enviornmentReflection = screenSpaceReflections(mat3(gbufferModelView) * reflectedVector_L, viewPos, noise.z, isHand, roughness, backgroundReflectMask);
+
+				#if defined INCLUDE_BLISS_WSR
+					if (enviornmentReflection.a < 0.999 && !isHand) {
+						vec3 wsrPlayerPos = mat3(gbufferModelViewInverse) * viewPos + gbufferModelViewInverse[3].xyz;
+						vec4 wsr = BlissWSR(wsrPlayerPos, normal, normalize(reflectedVector_L));
+						enviornmentReflection.rgb = mix(wsr.rgb, enviornmentReflection.rgb, enviornmentReflection.a);
+						enviornmentReflection.a = max(enviornmentReflection.a, wsr.a);
+						#if DEBUG_VIEW == debug_WSR
+							enviornmentReflection = vec4(wsr.a > 0.0 ? vec3(0.0, 10.0, 0.0) : vec3(10.0, 0.0, 0.0), 1.0);
+						#endif
+					}
+				#endif
+				#if defined INCLUDE_PLAYER_REF && defined WSR_DEFER_FORWARD && defined FORWARD_SPECULAR
+					// SSR cannot see the first-person player; it wins over whatever SSR found behind it.
+					if (!isHand) {
+						vec3 prPlayerPos = mat3(gbufferModelViewInverse) * viewPos + gbufferModelViewInverse[3].xyz + 0.04 * normal;
+						float prLimit = enviornmentReflection.a > 0.0 && ssrHitDist > 0.0 ? ssrHitDist : 999999.0;
+						vec4 playerRef = BlissPlayerRef(prPlayerPos, normalize(reflectedVector_L), prLimit, wsrSunColor, wsrAmbientColor, wsrSunDir);
+						if (playerRef.a > 0.0) enviornmentReflection = playerRef;
+					}
+				#endif
+				}
+				#endif
 				// darkening for metals.
 				vec3 DarkenedDiffuseLighting = isMetal ? diffuseLighting * (1.0-enviornmentReflection.a) * (1.0-lightmap) : diffuseLighting;
 			#else
@@ -391,11 +582,45 @@ vec3 specularReflections(
 			#endif
 
 			// composite all the different reflections together
+			#if IPBR_MODE == 1 && defined DEFERRED_SPECULAR && !defined FORWARD_SPECULAR
+				vec3 ipbrRefScale = ipbrReflectColor;
+				#ifdef INCLUDE_BLISS_WSR
+					ipbrRefScale *= mix(float(WSR_NIGHT_STRENGTH), float(WSR_DAY_STRENGTH), wsrDayFactor) * 0.01;
+				#endif
+				#if defined DEFERRED_BACKGROUND_REFLECTION || defined FORWARD_BACKGROUND_REFLECTION
+					backgroundReflection *= ipbrRefScale;
+				#endif
+				#if DEFERRED_SSR_QUALITY > 0 || FORWARD_SSR_QUALITY > 0
+					enviornmentReflection.rgb *= ipbrRefScale;
+				#endif
+			#endif
 			#if defined DEFERRED_BACKGROUND_REFLECTION || defined FORWARD_BACKGROUND_REFLECTION
 				specularReflections = mix(DarkenedDiffuseLighting, backgroundReflection, backgroundReflectMask);
 			#endif
+			#if defined WSR_DEFER_FORWARD && defined FORWARD_SPECULAR && (DEFERRED_SSR_QUALITY > 0 || FORWARD_SSR_QUALITY > 0)
+				if (!isHand && !mirrorSkyOnly) {
+					wsrDeferBase = specularReflections;
+					wsrDeferWeight = dot(F0, vec3(1.0 / 3.0)) * (1.0 - enviornmentReflection.a) * (1.0 - reflectionVisibilty);
+					wsrDeferDir = normalize(reflectedVector_L);
+				}
+			#endif
 			#if DEFERRED_SSR_QUALITY > 0 || FORWARD_SSR_QUALITY > 0
 				specularReflections = mix(specularReflections, enviornmentReflection.rgb, enviornmentReflection.a);
+			#endif
+
+			#if IPBR_MODE == 1 && defined DEFERRED_SPECULAR && !defined FORWARD_SPECULAR
+				if (!isMetal) {
+					// Upstream's lighting spans ~2-3x between sun and shade; Bliss' HDR spans 10x+, so a sunlit hit (or a torch)
+					// mirrored onto a shaded block turns into bright speckles. Soft-cap reflections relative to the local light.
+					const vec3 lumaW = vec3(0.299, 0.587, 0.114);
+					float localLight = dot(diffuseLighting, lumaW) / max(dot(albedo, lumaW), 0.02);
+					float refCap = 2.5 * localLight + 1e-5;
+					float refLum = dot(specularReflections, lumaW);
+					specularReflections *= 1.0 / (1.0 + refLum / refCap);
+
+					// Upstream's texturePreservation (composite1.glsl): dark reflections do not darken the surface.
+					specularReflections = mix(specularReflections, max(DarkenedDiffuseLighting, specularReflections), 0.7);
+				}
 			#endif
 
 			specularReflections = mix(DarkenedDiffuseLighting, specularReflections, F0);
@@ -406,7 +631,18 @@ vec3 specularReflections(
 	#endif
 
 	#if defined OVERWORLD_SHADER || SUN_SPECULAR_MULT > 0
-		vec3 lightSourceReflection = SUN_SPECULAR_MULT * lightColor * GGX(normal, -playerPos, lightPos, roughness, reflectance, metalAlbedoTint);
+		#if IPBR_MODE == 1 && defined DEFERRED_SPECULAR && !defined FORWARD_SPECULAR
+			vec3 lightSourceReflection;
+			if (ipbrDielectric) {
+				// Intense-fresnel materials carry highlightMult ~2-3.5 upstream; the rest default to 1.
+				float highlightMult = ipbrIntense ? 2.5 : 1.0;
+				lightSourceReflection = SUN_SPECULAR_MULT * lightColor * IpbrHighlight(normal, playerPos, lightPos, ipbrSmoothnessG) * highlightMult;
+			} else {
+				lightSourceReflection = SUN_SPECULAR_MULT * lightColor * GGX(normal, -playerPos, lightPos, highlightRoughness, reflectance, metalAlbedoTint);
+			}
+		#else
+			vec3 lightSourceReflection = SUN_SPECULAR_MULT * lightColor * GGX(normal, -playerPos, lightPos, roughness, reflectance, metalAlbedoTint);
+		#endif
 		specularReflections += lightSourceReflection;
 	#endif
 

@@ -1,3 +1,10 @@
+// Iris only sees a bool option through a plain #ifdef.
+#ifdef THE_ORB
+	#ifdef ORB_ALWAYS_VISIBLE
+		#define ORB_SPHERE_ALWAYS
+	#endif
+#endif
+
 // Hash without Sine
 // MIT License...
 /* Copyright (c)2014 David Hoskins.
@@ -64,14 +71,18 @@ SOFTWARE.*/
 
 // vec3 RandomPosition = hash31(frameTimeCounter);
 float vortexBoundRange = 300.0;
-vec3 ManualLightPos = vec3(ORB_X, ORB_Y, ORB_Z);
+const vec3 OrbWorldPos = vec3(0.0, ORB_HEIGHT, 0.0);
 
 vec3 LightSourcePosition(vec3 worldPos, vec3 cameraPos, float vortexBounds){
 
 	// this is static so it can just sit in one place
-	vec3 vortexPos = worldPos - vec3(0.0,200.0,0.0);
+	#ifdef THE_ORB
+		vec3 vortexPos = worldPos - OrbWorldPos;
+	#else
+		vec3 vortexPos = worldPos - vec3(0.0,200.0,0.0);
+	#endif
 
-    vec3 lightningPos = worldPos - cameraPos - ManualLightPos;
+    vec3 lightningPos = worldPos - cameraPos;
     
 	// snap-to coordinates in worldspace.
 	float cellSize = 200.0;
@@ -81,15 +92,7 @@ vec3 LightSourcePosition(vec3 worldPos, vec3 cameraPos, float vortexBounds){
 	vec3 randomOffset = (texelFetch2D(colortex4,ivec2(2,1),0).xyz / 150.0) * 2.0 - 1.0;
 	lightningPos -= randomOffset * 2.5;
 	
-	#ifdef THE_ORB
-		cellSize = 200.0;
-    	vec3 orbpos = worldPos - cameraPos - ManualLightPos;// - vec3(sin(frameTimeCounter), cos(frameTimeCounter), cos(frameTimeCounter))*100;
-    	orbpos += fract(cameraPos/cellSize)*cellSize - cellSize*0.5;
-
-		return orbpos;
-	#else
-		return mix(lightningPos, vortexPos, vortexBounds);
-	#endif
+	return mix(lightningPos, vortexPos, vortexBounds);
 }
 
 float densityAtPosFog(in vec3 pos){
@@ -188,10 +191,9 @@ vec3 LightSourceColors(float vortexBounds, float lightningflash){
     vec3 lightningColor = vec3(END_LIGHTNING_COL_R,END_LIGHTNING_COL_G,END_LIGHTNING_COL_B) * lightningflash;
 
 	#ifdef THE_ORB
-		return vec3(ORB_R, ORB_G, ORB_B) * ORB_ColMult;
-	#else
-		return mix(lightningColor, vortexColor, vortexBounds);
+		vortexColor = vec3(ORB_R, ORB_G, ORB_B) * ORB_ColMult;
 	#endif
+	return mix(lightningColor, vortexColor, vortexBounds);
 }
 
 vec3 LightSourceLighting(vec3 startPos, vec3 lightPos, float noise, float density, vec3 lightColor, float vortexBound){
@@ -232,6 +234,9 @@ vec4 GetVolumetricFog(
 	vec3 progressW = vec3(0.0);
 
 	float maxLength = min(length(dVWorld),32.0 * 12.0)/length(dVWorld);
+	#ifdef ORB_SPHERE_ALWAYS
+		float sceneDist = length(dVWorld);
+	#endif
 	
 	dVWorld *= maxLength;
 
@@ -255,7 +260,7 @@ vec4 GetVolumetricFog(
     
 	float lightningflash = texelFetch2D(colortex4,ivec2(1,1),0).x/150.0;
 
-	#if defined LPV_VL_FOG_ILLUMINATION && defined EXCLUDE_WRITE_TO_LUT
+	#if defined BLOCKLIGHT_FOG && defined EXCLUDE_WRITE_TO_LUT
     	float TorchBrightness_autoAdjust = mix(1.0, 30.0,  clamp(exp(-10.0*exposure),0.0,1.0)) / 5.0;
 	#endif
 	
@@ -283,8 +288,8 @@ vec4 GetVolumetricFog(
 			float clearArea =  1.0-min(max(1.0 - length(progressW - cameraPosition) / 100,0.0),1.0);
 			float stormDensity = min(volumeDensity, clearArea*clearArea * END_STORM_DENSTIY);
 			
-			#ifdef THE_ORB
-				stormDensity += min(50.0*max(1.0 - length(lightPosition)/10,0.0),1.0);
+			#if defined THE_ORB && !defined ORB_SPHERE_ALWAYS
+				stormDensity += min(50.0*max(1.0 - length(lightPosition)/float(ORB_SIZE),0.0),1.0) * vortexBounds;
 			#endif
 			
 			float volumeCoeff = exp(-stormDensity*dd*dL);
@@ -321,10 +326,27 @@ vec4 GetVolumetricFog(
 		#endif
 
 		//------ LPV FOG EFFECT
-			#if defined LPV_VL_FOG_ILLUMINATION && defined EXCLUDE_WRITE_TO_LUT
+			#if defined BLOCKLIGHT_FOG && defined EXCLUDE_WRITE_TO_LUT
 				color += LPV_FOG_ILLUMINATION(progressW-cameraPosition, dd, dL) * TorchBrightness_autoAdjust * absorbance;
 			#endif
 	}
+
+	// The fog march stops at 384 blocks and samples sparsely, so the orb itself is drawn analytically.
+	#ifdef ORB_SPHERE_ALWAYS
+	{
+		vec3 orbRay = normalize(dVWorld);
+		vec3 toOrb = OrbWorldPos - (cameraPosition + gbufferModelViewInverse[3].xyz);
+		float orbT = dot(toOrb, orbRay);
+		if (orbT > 0.0 && orbT < sceneDist + float(ORB_SIZE)) {
+			float orbD = length(toOrb - orbRay * orbT) / float(ORB_SIZE);
+			vec3 orbCol = vec3(ORB_R, ORB_G, ORB_B) * ORB_ColMult;
+			float core = smoothstep(1.0, 0.8, orbD);
+			color = mix(color, orbCol * 4.0, core);
+			color += orbCol * exp(-max(orbD - 1.0, 0.0) * 1.5) * 0.3 * (1.0 - core) * absorbance;
+			absorbance *= 1.0 - core;
+		}
+	}
+	#endif
 	return vec4(color, absorbance);
 }
 

@@ -161,7 +161,7 @@ vec4 GetVolumetricFog(
 		float inBiome = BiomeVLFogColors(biomeDirect, biomeIndirect);
 	#endif
 
-	#if defined LPV_VL_FOG_ILLUMINATION && defined EXCLUDE_WRITE_TO_LUT
+	#if defined BLOCKLIGHT_FOG && defined EXCLUDE_WRITE_TO_LUT
     	float TorchBrightness_autoAdjust = mix(1.0, 30.0,  clamp(exp(-10.0*exposure),0.0,1.0)) / 5.0;
 	#endif
 
@@ -242,6 +242,13 @@ vec4 GetVolumetricFog(
 			
 			color += (lighting - lighting * fogVolumeCoeff) * totalAbsorbance;
 
+			#ifdef GLOBAL_GOD_RAYS
+				// Thin sunlit medium near the camera so shadow-map light shafts show outside fog; scatters only, no extinction.
+				// Kept near-field: over the whole 384-block march it turned into a uniform haze instead of shafts.
+				vec3 godRayLight = LightSourcePhased * sh * inACave * exp(-length(d*dVWorld) / 96.0);
+				color += godRayLight * (1.0 - exp(-GOD_RAYS_STRENGTH * 0.00004 * dd*dL)) * totalAbsorbance;
+			#endif
+
 			#if defined FLASHLIGHT && defined FLASHLIGHT_FOG_ILLUMINATION && !defined VL_CLOUDS_DEFERRED
 				// vec3 shiftedViewPos = mat3(gbufferModelView)*(progressW-cameraPosition) + vec3(-0.25, 0.2, 0.0);
 				// vec3 shiftedPlayerPos = mat3(gbufferModelViewInverse) * shiftedViewPos;
@@ -304,7 +311,7 @@ vec4 GetVolumetricFog(
 		//------------------------------------
 		//------ LPV FOG EFFECT
 		//------------------------------------
-			#if defined LPV_VL_FOG_ILLUMINATION && defined EXCLUDE_WRITE_TO_LUT 
+			#if defined BLOCKLIGHT_FOG && defined EXCLUDE_WRITE_TO_LUT 
 				color += LPV_FOG_ILLUMINATION(progressW-cameraPosition, dd, dL) * totalAbsorbance;
 			#endif
 	}

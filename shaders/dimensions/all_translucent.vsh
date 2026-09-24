@@ -2,6 +2,8 @@
 #include "/lib/res_params.glsl"
 #include "/lib/bokeh.glsl"
 #include "/lib/items.glsl"
+#include "/lib/ipbr/ipbr_settings.glsl"
+#include "/lib/ipbr/id_decode.glsl"
 
 uniform float frameTimeCounter;
 #include "/lib/Shadow_Params.glsl"
@@ -32,6 +34,8 @@ uniform sampler2D noisetex;
 #endif
 
 varying vec4 normalMat;
+// Raw Iris block id (Complementary's integratedPBR+ numbering).
+flat varying float irisBlockId;
 varying vec3 binormal;
 varying vec4 tangent;
 varying vec3 flatnormal;
@@ -51,7 +55,10 @@ flat varying int glass;
 
 attribute vec4 at_tangent;
 attribute vec4 mc_Entity;
-#if defined ENTITIES
+// entityId is also read on the BLOCKENTITIES path further down, so the guard
+// has to cover both.  Upstream Bliss only declared it for ENTITIES, which made
+// gbuffers_block_translucent fail to compile.
+#if defined ENTITIES || defined BLOCKENTITIES
 	uniform int entityId;
 #endif
 
@@ -81,8 +88,12 @@ uniform int framemod8;
 #include "/lib/TAA_jitter.glsl"
 
 
+#ifndef diagonal3
 #define diagonal3(m) vec3((m)[0].x, (m)[1].y, m[2].z)
+#endif
+#ifndef projMAD
 #define  projMAD(m, v) (diagonal3(m) * (v) + (m)[3].xyz)
+#endif
 
 vec4 toClipSpace3(vec3 viewSpacePosition) {
     return vec4(projMAD(gl_ProjectionMatrix, viewSpacePosition),-viewSpacePosition.z);
@@ -122,6 +133,11 @@ vec3 getWaveNormal(vec3 posxz, float range){
 void main() {
 
  	gl_Position = ftransform();
+
+	// Bliss' coarse block category, recovered from Iris' (Complementary-ordered)
+	// id.  Declared before the Physics Mod branch so both paths have it.
+	float blissBlockID = DecodeBlissBlockId(mc_Entity.x);
+
 	#if defined ENTITIES && defined IS_IRIS
 		// force out of frustum
 		if (entityId == 1599) gl_Position.z -= 10000.0;
@@ -145,7 +161,7 @@ void main() {
 	lmtexcoord.zw = lmcoord;
 
 	#ifdef LARGE_WAVE_DISPLACEMENT
-		if(mc_Entity.x == 8.0) {
+		if(blissBlockID == 8.0) {
 				
 			vec3 playerPos = mat3(gbufferModelViewInverse) * position.xyz;
 
@@ -180,7 +196,7 @@ void main() {
 	HELD_ITEM_BRIGHTNESS = 0.0;
 	
 	#ifdef Hand_Held_lights
-		if(heldItemId > 999 || heldItemId2 > 999) HELD_ITEM_BRIGHTNESS = 0.9;
+		if(DecodeBlissItemIdInt(heldItemId) > 999 || DecodeBlissItemIdInt(heldItemId2) > 999) HELD_ITEM_BRIGHTNESS = 0.9;
 	#endif
 	
 	// 1.0 = water mask
@@ -190,7 +206,7 @@ void main() {
 	float mat = 0.0;
 
 	// water mask
-	if(mc_Entity.x == 8.0) {
+	if(blissBlockID == 8.0) {
     	mat = 1.0;
   	}
 
@@ -201,7 +217,7 @@ void main() {
 	#endif
 
 	// translucent blocks
-	if (mc_Entity.x >= 301 && mc_Entity.x <= 321) mat = 0.7;
+	if (blissBlockID >= 301.0 && blissBlockID <= 321.0) mat = 0.7;
 
 	#if defined ENTITIES && defined IS_IRIS
 		NAMETAG = 0;
@@ -212,13 +228,14 @@ void main() {
 
 	tangent = vec4(normalize(gl_NormalMatrix * at_tangent.rgb),at_tangent.w);
 	normalMat = vec4(normalize(gl_NormalMatrix * gl_Normal), mat);
+	irisBlockId = mc_Entity.x;
 	binormal = normalize(cross(tangent.rgb,normalMat.xyz)*at_tangent.w);
 	mat3 tbnMatrix = mat3(tangent.x, binormal.x, normalMat.x,
 						  tangent.y, binormal.y, normalMat.y,
 						  tangent.z, binormal.z, normalMat.z);
 
 	#ifdef LARGE_WAVE_DISPLACEMENT
-		if(mc_Entity.x == 8.0) {
+		if(blissBlockID == 8.0) {
 			largeWaveDisplacementNormal = normalize(largeWaveDisplacementNormal * tbnMatrix);
 		}else{
 			largeWaveDisplacementNormal = normalMat.xyz;

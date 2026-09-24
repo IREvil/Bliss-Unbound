@@ -1,4 +1,6 @@
 #include "/lib/settings.glsl"
+#include "/lib/ipbr/ipbr_settings.glsl"
+#include "/lib/ipbr/ipbr_math.glsl"
 
 #undef FLASHLIGHT_BOUNCED_INDIRECT
 
@@ -11,10 +13,28 @@
 	#extension GL_ARB_shading_language_packing: enable
 #endif
 
+#if defined WSR_TRANSLUCENT && COLORED_LIGHTING_INTERNAL > 0
+	#define TRANSLUCENT_ACT
+	#if WORLD_SPACE_REFLECTIONS_INTERNAL > 0
+		#extension GL_ARB_shader_image_load_store: enable
+		#extension GL_ARB_shader_storage_buffer_object: enable
+		#extension GL_ARB_shading_language_420pack: enable
+		#extension GL_ARB_gpu_shader5: enable
+		#extension GL_ARB_shading_language_packing: enable
+		#ifdef WSR_TRANSLUCENT_DEFERRED
+			#define WSR_DEFER_FORWARD
+		#else
+			#define TRANSLUCENT_WSR
+		#endif
+	#endif
+#endif
+
 #include "/lib/res_params.glsl"
 
 varying vec4 lmtexcoord;
 varying vec4 color;
+// Raw Iris block id (Complementary's integratedPBR+ numbering).
+flat varying float irisBlockId;
 uniform vec4 entityColor;
 
 #ifdef OVERWORLD_SHADER
@@ -147,6 +167,67 @@ uniform float waterEnteredAltitude;
 #ifdef FORWARD_BACKGROUND_REFLECTION
 #endif
 #ifdef FORWARD_ROUGH_REFLECTION
+#endif
+
+#ifdef TRANSLUCENT_ACT
+	uniform usampler3D voxel_sampler;
+	uniform sampler3D floodfill_sampler;
+	uniform sampler3D floodfill_sampler_copy;
+	uniform int framemod2;
+	vec3 cameraPositionBestFract = fract(cameraPosition);
+
+	#include "/lib/voxelization/act_common.glsl"
+	#include "/lib/voxelization/lightVoxelization.glsl"
+#endif
+#ifdef TRANSLUCENT_WSR
+	#include "/lib/voxelization/blissWSR.glsl"
+#endif
+#ifdef WSR_DEFER_FORWARD
+	layout(rgba32ui) uniform writeonly uimage2D wsrTrans_img;
+	// The player is traced here, against the SSR hit; the deferred resolve only fills in terrain.
+	#include "/lib/voxelization/playerRef.glsl"
+#endif
+
+#if defined TRANSLUCENT_ACT && defined CONNECTED_GLASS_EFFECT && defined IPBR
+	#define BLISS_CONNECTED_GLASS
+	const ivec3[6] cgOffsets = ivec3[](ivec3(1, 0, 0), ivec3(-1, 0, 0), ivec3(0, 1, 0), ivec3(0, -1, 0), ivec3(0, 0, 1), ivec3(0, 0, -1));
+
+	// Complementary's DoConnectedGlass on the 16px atlas grid (this host's mid-coord data reads as zero).
+	// Returns false when the fragment should be discarded.
+	bool BlissConnectedGlass(inout vec4 texColor, vec2 uv, vec3 playerPos, vec3 worldGeoNormal, uint voxelID, bool isPane) {
+		vec3 n = vec3(round(worldGeoNormal.x), round(worldGeoNormal.y), round(worldGeoNormal.z));
+		vec3 playerPosM = playerPos - n * 0.25;
+		vec3 voxelPos = SceneToVoxel(playerPosM);
+		if (!CheckInsideVoxelVolume(voxelPos)) return true;
+
+		vec2 sprite = 16.0 / vec2(textureSize(texture, 0));
+		vec2 midCoord = (floor(uv / sprite) + 0.5) * sprite - 0.00001;
+		const float pixelOffset = 1.0 / 16.0;
+
+		vec4 vanilla = texture2DLod(texture, uv, 0.0);
+		vec4 result = vanilla;
+		vec3 worldPos = playerPosM + cameraPositionBestFract;
+		vec3 floorWorldPos = floor(worldPos);
+		ivec3 voxelI = ivec3(voxelPos);
+
+		for (int i = 0; i < 6; i++) {
+			if (GetVoxelVolume(voxelI + cgOffsets[i]) == voxelID && floor(worldPos + vec3(cgOffsets[i]) * pixelOffset) != floorWorldPos)
+				result = texture2DLod(texture, midCoord, 0.0);
+		}
+		// Restore the frame on sides that are not connected (keeps the outer border and corners).
+		for (int i = 0; i < 6; i++) {
+			if (GetVoxelVolume(voxelI + cgOffsets[i]) != voxelID && floor(worldPos + vec3(cgOffsets[i]) * pixelOffset) != floorWorldPos)
+				result = vanilla;
+		}
+
+		if (isPane) {
+			if (n.y > 0.5 && GetVoxelVolume(voxelI + ivec3(0, 1, 0)) == voxelID) return false;
+			if (n.y < -0.5 && GetVoxelVolume(voxelI - ivec3(0, 1, 0)) == voxelID) return false;
+		}
+
+		texColor = result;
+		return true;
+	}
 #endif
 
 #include "/lib/specular.glsl"
@@ -436,7 +517,47 @@ if (gl_FragCoord.x * texelSize.x < 1.0  && gl_FragCoord.y * texelSize.y < 1.0 )	
 
 	gl_FragData[0] = texture2D(texture, lmtexcoord.xy, Texture_MipMap_Bias) * color;
 
+	#ifdef BLISS_CONNECTED_GLASS
+	{
+		int cgMat = int(irisBlockId + 0.5);
+		uint cgVoxel = 0u;
+		bool cgPane = false;
+		if (cgMat == 30008) cgVoxel = 254u;
+		else if (cgMat >= 31000 && cgMat < 32000) { cgVoxel = uint(200 + (cgMat - 31000) / 2); cgPane = cgMat % 2 == 1; }
+		else if (cgMat == 32008) cgVoxel = 217u;
+		else if (cgMat == 32012) { cgVoxel = 218u; cgPane = true; }
+
+		if (cgVoxel > 0u) {
+			vec4 cgTex = texture2D(texture, lmtexcoord.xy, Texture_MipMap_Bias);
+			if (!BlissConnectedGlass(cgTex, lmtexcoord.xy, feetPlayerPos + gbufferModelViewInverse[3].xyz, mat3(gbufferModelViewInverse) * normalMat.xyz, cgVoxel, cgPane)) discard;
+			gl_FragData[0] = cgTex * color;
+		}
+	}
+	#endif
+
+	#ifdef IPBR
+		// Inputs for the IntegratedPBR+ translucent material table.  Captured
+		// here, before the table's own color shadows this varying, and used
+		// further down once the world-space normal exists.
+		vec4 ipbrBaseColor = gl_FragData[0];   // texture * vertex colour
+		vec4 ipbrVertexColor = color;
+		float ipbrTranslucentSmoothness = 0.0;
+		float ipbrTranslucentF0 = 0.0;
+		float ipbrTranslucentEmission = 0.0;
+		float ipbrTranslucentReflectMult = 1.0;
+		vec4 ipbrTranslucentColor = vec4(1.0);
+		bool ipbrTranslucentValid = false;
+	#endif
+
 	float UnchangedAlpha = gl_FragData[0].a;
+
+	#if defined IPBR && MIRROR_TINTED_GLASS == 0
+		// Tinted glass is not classified by the table (no smoothness), so its alpha is set here.
+		if (int(irisBlockId + 0.5) == 30008) {
+			UnchangedAlpha *= 1.0 - TINTED_GLASS_CLARITY * 0.01;
+			gl_FragData[0].a = UnchangedAlpha;
+		}
+	#endif
 
 	#ifdef WhiteWorld
 		gl_FragData[0].rgb = vec3(1.0);
@@ -564,6 +685,49 @@ if (gl_FragCoord.x * texelSize.x < 1.0  && gl_FragCoord.y * texelSize.y < 1.0 )	
 
 
 	vec3 SpecularTex = texture2D(specular, lmtexcoord.xy, Texture_MipMap_Bias).rga;
+
+	// -----------------------------------------------------------------------
+	//  IntegratedPBR+ translucent material table
+	// -----------------------------------------------------------------------
+	#include "/lib/ipbr/ipbr_translucent.glsl"
+
+	#ifdef IPBR
+		// Only override when the table actually classified this block; anything
+		// else keeps Bliss' resource-pack specular values.
+		if (ipbrTranslucentValid) {
+			SpecularTex = vec3(ipbrTranslucentSmoothness, ipbrTranslucentF0, ipbrTranslucentEmission);
+
+			// Colour and opacity as the table resolved them.  Upstream these
+			// are the glass material: a pale tint plus a minimum opacity for
+			// the empty part of a pane, and DoTranslucentTweaks pulling the
+			// alpha down as the camera closes in.  Bliss blends on the texture
+			// alpha, so both have to be replaced together.
+			Albedo = toLinear(ipbrTranslucentColor.rgb);
+			UnchangedAlpha = ipbrTranslucentColor.a * IPBR_TRANSLUCENT_ALPHA_M;
+			gl_FragData[0].a = UnchangedAlpha;
+		}
+	#endif
+
+	// Complementary's portal edge (netherPortal.glsl): portal texels within 1/16 block of a non-portal voxel glow.
+	#if defined TRANSLUCENT_ACT && defined PORTAL_EDGE_EFFECT
+		if (int(irisBlockId + 0.5) == 30020) {
+			vec3 peVoxelPos = SceneToVoxel(feetPlayerPos + gbufferModelViewInverse[3].xyz);
+			if (CheckInsideVoxelVolume(peVoxelPos)) {
+				float peOffset = 0.0625 * interleaved_gradientNoise_temporal();
+				bool peEdge = false;
+				for (int i = 0; i < 3; i++) {
+					vec3 peDir = vec3(equal(ivec3(i), ivec3(0, 1, 2))) * peOffset;
+					if (GetVoxelVolume(ivec3(peVoxelPos + peDir)) != 25u || GetVoxelVolume(ivec3(peVoxelPos - peDir)) != 25u) peEdge = true;
+				}
+				if (peEdge) {
+					Albedo = normalize(Albedo + 1e-5) * vec3(1.0, 1.0, 0.8);
+					UnchangedAlpha = 1.0;
+					gl_FragData[0].a = 1.0;
+					SpecularTex.b = IpbrToBlissEmission(5.0);
+				}
+			}
+		}
+	#endif
 ////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////// DIFFUSE LIGHTING //////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -576,7 +740,7 @@ if (gl_FragCoord.x * texelSize.x < 1.0  && gl_FragCoord.y * texelSize.y < 1.0 )	
 		lightmap.y = 1.0;
 	#endif
 	
-	#if defined Hand_Held_lights && !defined LPV_ENABLED
+	#if defined Hand_Held_lights && !defined IS_LPV_ENABLED
 		#ifdef IS_IRIS
 			vec3 playerCamPos = eyePosition;
 		#else
@@ -623,6 +787,8 @@ if (gl_FragCoord.x * texelSize.x < 1.0  && gl_FragCoord.y * texelSize.y < 1.0 )	
 
 		vec3 shadowPlayerPos = mat3(gbufferModelViewInverse) * viewPos + gbufferModelViewInverse[3].xyz;
 
+		// ComputeShadowMap tints this by the surface's own coloured shadow; reflected hits must not inherit it.
+		vec3 wsrUntintedSun = DirectLightColor;
 		Shadows = ComputeShadowMap(DirectLightColor, shadowPlayerPos, shadowMapFalloff, blueNoise(), geoNormals);
 
 		// Shadows = mix(LM_shadowMapFallback, Shadows, shadowMapFalloff2);
@@ -692,7 +858,31 @@ if (gl_FragCoord.x * texelSize.x < 1.0  && gl_FragCoord.y * texelSize.y < 1.0 )	
 		const vec3 lpvPos = vec3(0.0);
 	#endif
 
-	Indirect_lighting += doBlockLightLighting( vec3(TORCH_R,TORCH_G,TORCH_B), lightmap.x, feetPlayerPos, lpvPos);
+	vec3 blockLightColor = doBlockLightLighting( vec3(TORCH_R,TORCH_G,TORCH_B), lightmap.x, feetPlayerPos, lpvPos);
+
+	// Same ACT replacement as composite1: vanilla lightmap sets brightness, the floodfilled volume sets colour.
+	#ifdef TRANSLUCENT_ACT
+	{
+		vec3 actVoxelPos = SceneToVoxel(feetPlayerPos) + geoNormals * 0.55;
+		if (CheckInsideVoxelVolume(actVoxelPos)) {
+			vec3 actLight = sqrt(GetLightVolume(clamp01(actVoxelPos / vec3(voxelVolumeSize)))).rgb;
+			vec3 actColor = DoLuminanceCorrection(actLight + vec3(TORCH_R,TORCH_G,TORCH_B) * 0.05);
+
+			#if COLORED_LIGHT_SATURATION != 100
+				actColor = mix(vec3(GetLuminance(actColor)), actColor, COLORED_LIGHT_SATURATION * 0.01);
+			#endif
+
+			vec3 actBlockLight = GetLuminance(blockLightColor) * actColor * (COLORED_LIGHT_STRENGTH / 1300.0);
+
+			vec3 actAbsPos = abs(feetPlayerPos);
+			actAbsPos.y *= 2.0;
+			float actFade = min(max(actAbsPos.x, max(actAbsPos.y, actAbsPos.z)) / effectiveACTdistance * 2.0, 1.0);
+			blockLightColor = mix(actBlockLight, blockLightColor, actFade * actFade);
+		}
+	}
+	#endif
+
+	Indirect_lighting += blockLightColor;
 	
 	vec4 flashLightSpecularData = vec4(0.0);
 	#ifdef FLASHLIGHT
@@ -739,6 +929,12 @@ if (gl_FragCoord.x * texelSize.x < 1.0  && gl_FragCoord.y * texelSize.y < 1.0 )	
 
 		if(UnchangedAlpha <= 0.0 && !isReflective) f0 = 0.0;
 
+		#ifdef IPBR
+			// Upstream fades glass reflections out within ~2 blocks; the hardcoded f0 floor below would undo that.
+			bool ipbrNoReflection = ipbrTranslucentValid && !isWater && ipbrTranslucentReflectMult < 0.01;
+			if (ipbrNoReflection) f0 = 0.0;
+		#endif
+
 		if (f0 > 0.0){
 			if(isReflective) f0 = max(f0, harcodedF0);
 			
@@ -749,8 +945,27 @@ if (gl_FragCoord.x * texelSize.x < 1.0  && gl_FragCoord.y * texelSize.y < 1.0 )	
 				vec3 DirectLightColor = WsunVec;
 				float Shadows = 0.0;
 			#endif
+
+			#if defined INCLUDE_BLISS_WSR || defined INCLUDE_PLAYER_REF
+				#ifdef OVERWORLD_SHADER
+					wsrSunColor = wsrUntintedSun;
+				#else
+					wsrSunColor = DirectLightColor;
+				#endif
+				wsrAmbientColor = averageSkyCol_Clouds / 900.0;
+				wsrSunDir = WsunVec;
+			#endif
 			
 			vec3 specularReflections = specularReflections(viewPos, normalize(feetPlayerPos), WsunVec, vec3(blueNoise(), vec2(interleaved_gradientNoise_temporal())), worldSpaceNormal, roughness, f0, Albedo, FinalColor*gl_FragData[0].a, DirectLightColor * Shadows, lightmap.y, isHand, isWater, reflectance, flashLightSpecularData);
+
+			#ifdef WSR_DEFER_FORWARD
+				// Depth rides along so the resolve can reject pixels where a different translucent layer won.
+				if (wsrDeferWeight > 0.002) {
+					vec3 deferBase = clamp(wsrDeferBase, 0.0, 60000.0); // half-float range
+					imageStore(wsrTrans_img, ivec2(gl_FragCoord.xy), uvec4(packHalf2x16(deferBase.rg), packHalf2x16(vec2(deferBase.b, wsrDeferWeight)),
+						packSnorm2x16(WsrOctEncode(wsrDeferDir)), floatBitsToUint(gl_FragCoord.z)));
+				}
+			#endif
 			
 			gl_FragData[0].a = gl_FragData[0].a + (1.0-gl_FragData[0].a) * reflectance;
 		
@@ -784,6 +999,18 @@ if (gl_FragCoord.x * texelSize.x < 1.0  && gl_FragCoord.y * texelSize.y < 1.0 )	
 		if(WATER) {
 			gl_FragData[0].a = 0.0;
 			MATERIALS = 0.0;
+		}
+	#endif
+
+	#if DEBUG_VIEW == debug_TRANSLUCENT
+		// Magenta = the IntegratedPBR+ translucent table did not classify this
+		// block.  Otherwise: red = opacity, green = smoothness, blue = F0 x4.
+		if (ipbrTranslucentValid) {
+			gl_FragData[0] = vec4(ipbrTranslucentColor.a,
+			                      ipbrTranslucentSmoothness,
+			                      ipbrTranslucentF0 * 4.0, 1.0);
+		} else {
+			gl_FragData[0] = vec4(1.0, 0.0, 1.0, 1.0);
 		}
 	#endif
 

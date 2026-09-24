@@ -52,8 +52,12 @@ uniform mat4 gbufferPreviousModelView;
 uniform vec3 previousCameraPosition;
 
 #define DHVLFOG
+#ifndef diagonal3
 #define diagonal3(m) vec3((m)[0].x, (m)[1].y, m[2].z)
+#endif
+#ifndef projMAD
 #define  projMAD(m, v) (diagonal3(m) * (v) + (m)[3].xyz)
+#endif
 
 #include "/lib/color_transforms.glsl"
 #include "/lib/color_dither.glsl"

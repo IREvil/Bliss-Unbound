@@ -8,9 +8,19 @@
 	#extension GL_ARB_shader_image_load_store: enable
 	#extension GL_ARB_shading_language_packing: enable
 #endif
+#if COLORED_LIGHTING_INTERNAL > 0
+	#extension GL_ARB_shader_image_load_store: enable
+	#if WORLD_SPACE_REFLECTIONS_INTERNAL > 0
+		#extension GL_ARB_shader_storage_buffer_object: enable
+		#extension GL_ARB_shading_language_420pack: enable
+		#extension GL_ARB_gpu_shader5: enable
+		#extension GL_ARB_shading_language_packing: enable
+	#endif
+#endif
 
 #include "/lib/util.glsl"
 #include "/lib/res_params.glsl"
+
 
 #define diagonal3_old(m) vec3((m)[0].x, (m)[1].y, m[2].z)
 #define  projMAD_old(m, v) (diagonal3_old(m) * (v) + (m)[3].xyz)
@@ -128,6 +138,8 @@ flat varying vec3 albedoSmooth;
 	uniform int heldItemId2;
 #endif
 
+
+
 uniform float waterEnteredAltitude;
 
 void convertHandDepth(inout float depth) {
@@ -145,6 +157,32 @@ float convertHandDepth_2(in float depth, bool hand) {
 }
 
 #include "/lib/projections.glsl"
+
+// Complementary's ACT light volume, read side.  The volume is written by the
+// shadow programs and floodfilled by shadowcomp; this is where its light is
+// finally applied to shading.  IS_LPV_ENABLED is off whenever this is on, so
+// only one light path is ever active.
+//
+// Placed after lib/projections.glsl because lightVoxelization.glsl's SceneToVoxel
+// reads cameraPosition at file scope, and projections.glsl is what declares it.
+#if COLORED_LIGHTING_INTERNAL > 0
+	uniform usampler3D voxel_sampler;
+
+	// lightVoxelization.glsl also carries the write path, which references
+	// floodfill_sampler and framemod2 even though this program never calls it --
+	// GLSL needs every referenced identifier declared.
+	uniform sampler3D floodfill_sampler;
+	uniform sampler3D floodfill_sampler_copy;
+	uniform int framemod2;
+	// Iris 1.8+ can supply cameraPositionFract, but it is not declared in every
+	// program, and this must compile wherever the voxeliser is used.  fract of
+	// cameraPosition is equivalent and always available.
+	vec3 cameraPositionBestFract = fract(cameraPosition);
+
+	#include "/lib/voxelization/act_common.glsl"
+	#include "/lib/colors/blocklightColors.glsl"
+	#include "/lib/voxelization/lightVoxelization.glsl"
+#endif
 #include "/lib/color_transforms.glsl"
 #include "/lib/waterBump.glsl"
 #include "/lib/Shadow_Params.glsl"
@@ -167,7 +205,7 @@ float convertHandDepth_2(in float depth, bool hand) {
 	#include "/lib/lpv_render.glsl"
 #endif
 
-// #define DEFERRED_SPECULAR
+#define DEFERRED_SPECULAR
 #define DEFERRED_SSR_QUALITY 30 // [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 200 300 400 500]
 #define DEFERRED_BACKGROUND_REFLECTION
 #define DEFERRED_ROUGH_REFLECTION
@@ -181,6 +219,11 @@ float convertHandDepth_2(in float depth, bool hand) {
 #ifdef DEFERRED_ROUGH_REFLECTION
 #endif
 
+#include "/lib/voxelization/blissWSR.glsl"
+#if defined INCLUDE_BLISS_WSR && defined WSR_TRANSLUCENT_DEFERRED && defined OVERWORLD_SHADER
+	#define WSR_DEFER_RESOLVE
+	layout(rgba32ui) uniform readonly uimage2D wsrTrans_img;
+#endif
 #include "/lib/specular.glsl"
 #include "/lib/diffuse_lighting.glsl"
 
@@ -1217,6 +1260,41 @@ void main() {
 		#endif
 
 		vec3 blockLightColor = doBlockLightLighting( vec3(TORCH_R,TORCH_G,TORCH_B), lightmap.x, feetPlayerPos, lpvPos);
+
+		// ACT replaces Bliss' block light inside its volume, as upstream does: the
+		// vanilla lightmap sets brightness, the floodfilled volume sets colour.
+		#if COLORED_LIGHTING_INTERNAL > 0
+			{
+				vec3 actVoxelPos = SceneToVoxel(feetPlayerPos) + FlatNormals * 0.55;
+				if (CheckInsideVoxelVolume(actVoxelPos)) {
+					vec4 actVolume = sqrt(max(GetLightVolume(clamp01(actVoxelPos / vec3(voxelVolumeSize))), vec4(0.0)));
+					// Upstream: volume alpha is extra light for dim sources (candles) -- more saturated colour and a raised lightmap.
+					vec3 actLight = actVolume.rgb * (1.0 + 50.0 * actVolume.a);
+					vec3 actColor = DoLuminanceCorrection(actLight + vec3(TORCH_R,TORCH_G,TORCH_B) * 0.05);
+
+					#if COLORED_LIGHT_SATURATION != 100
+						actColor = mix(vec3(GetLuminance(actColor)), actColor, COLORED_LIGHT_SATURATION * 0.01);
+					#endif
+
+					float actLum = GetLuminance(blockLightColor);
+					if (actVolume.a > 0.0) {
+						// Upstream mixes its lightmap curve toward 10 (~level 11); invert its low-light part to a lightmap for Bliss' curve.
+						float actLx = clamp(lightmap.x, 0.0, 1.0);
+						float actCompXM = pow(3.5 * pow(actLx, 8.0) + 2.1 * actLx, 2.25);
+						float actLxBoost = min(pow(mix(actCompXM, 10.0, actVolume.a), 1.0 / 2.25) / 2.1, 0.76);
+						if (actLxBoost > actLx) actLum = max(actLum, GetLuminance(doBlockLightLighting(vec3(TORCH_R,TORCH_G,TORCH_B), actLxBoost, feetPlayerPos, lpvPos)));
+					}
+
+					vec3 actBlockLight = actLum * actColor * (COLORED_LIGHT_STRENGTH / 1300.0);
+
+					vec3 actAbsPos = abs(feetPlayerPos);
+					actAbsPos.y *= 2.0;
+					float actFade = min(max(actAbsPos.x, max(actAbsPos.y, actAbsPos.z)) / effectiveACTdistance * 2.0, 1.0);
+					blockLightColor = mix(actBlockLight, blockLightColor, actFade * actFade);
+				}
+			}
+		#endif
+
 		Indirect_lighting += blockLightColor;
 
 		vec4 flashLightSpecularData = vec4(0.0);
@@ -1317,17 +1395,44 @@ void main() {
 			Direct_lighting *= AO;
 		#endif
 		#ifdef OVERWORLD_SHADER
+			// mix(SSS, 1, t) drops below t once the coloured shadow term exceeds 1, darkening sunlit SSS blocks; SSS only fills the unlit part.
 			#ifdef AO_in_sunlight
 				// Direct_lighting = shadowColor*NdotL*(AO*0.7+0.3) + SSSColor * (1.0-NdotL);
-				Direct_lighting = DirectLightColor * mix(SSSColor, vec3(1.0), NdotL*shadowColor * (AO*0.7+0.3));
+				vec3 directLit = NdotL*shadowColor * (AO*0.7+0.3);
 			#else
 				// Direct_lighting = shadowColor*NdotL + SSSColor * (1.0-NdotL);
-				Direct_lighting = DirectLightColor * mix(SSSColor, vec3(1.0), NdotL*shadowColor);
+				vec3 directLit = NdotL*shadowColor;
 			#endif
+			Direct_lighting = DirectLightColor * (directLit + SSSColor * max(1.0 - directLit, 0.0));
 		#endif
 
 		#if defined OVERWORLD_SHADER && defined DEFERRED_SPECULAR
-			if(!hand && !entities) applyPuddles(feetPlayerPos + cameraPosition, FlatNormals, lightmap.y, isWater, albedo, normal, SpecularTex.r, SpecularTex.g);
+			#ifdef IPBR
+				// le perfecto bliss: hand the puddle system the values a pack-less
+				// LabPBR setup would produce, not IPBR's.
+				//
+				// applyPuddles was written against LabPBR inputs.  It mixes the
+				// smoothness toward 1.0 -- a perfect mirror -- and gates its
+				// wet-darkening on `f0 < 229.5/255.0`.  Fed IPBR's specular it
+				// made wet ground a near-black mirror: mirror-smooth from the
+				// first, albedo pushed down by the second, and at a shallow angle
+				// reflecting mostly dark ground rather than sky.
+				//
+				// Smoothness 1 with f0 0 is what Bliss' own path produces without
+				// a resource pack, so the puddle shader now runs exactly as
+				// upstream intends.  IPBR's real specular values still drive the
+				// reflections; they just no longer steer the wetness model.
+				float puddleSmoothness = 1.0;
+				float puddleF0 = 0.0;
+				if(!hand && !entities) applyPuddles(feetPlayerPos + cameraPosition, FlatNormals, lightmap.y, isWater, albedo, normal, puddleSmoothness, puddleF0);
+			#else
+				if(!hand && !entities) applyPuddles(feetPlayerPos + cameraPosition, FlatNormals, lightmap.y, isWater, albedo, normal, SpecularTex.r, SpecularTex.g);
+			#endif
+		#endif
+
+		#if NORMAL_AMBIENT_RELIEF > 0
+			// Texels tilted up see more of the sky, tilted down less: keeps normal detail visible without sun.
+			if (!hand) Indirect_lighting *= clamp(1.0 + (normal.y - FlatNormals.y) * NORMAL_AMBIENT_RELIEF * 0.01, 0.25, 2.0);
 		#endif
 
 		vec3 FINAL_COLOR = (Indirect_lighting + Direct_lighting) * albedo;
@@ -1339,8 +1444,28 @@ void main() {
 		#if defined DEFERRED_SPECULAR	
 			vec3 specularNoises = vec3(BN.xy, blueNoise());
     		vec3 specularNormal = normal;
-			if (dot(normal, (feetPlayerPos_normalized)) > 0.0) specularNormal = FlatNormals;
+			// le perfecto bliss: the sign test must use the GEOMETRIC normal.
+			// Using the shaded one makes this selection flip per fragment wherever
+			// the perturbed normal crosses perpendicular to the view -- and since
+			// feetPlayerPos_normalized varies per fragment, that happens in a
+			// texture-locked pattern even when the normal itself is constant.
+			// The result is a hard binary mesh across the surface: view-dependent,
+			// indifferent to the light source, and immune to the perturbation's
+			// magnitude.  FlatNormals gives the same intent with a test that is
+			// stable across a face.
+			if (dot(FlatNormals, (feetPlayerPos_normalized)) > 0.0) specularNormal = FlatNormals;
+
+			#ifdef INCLUDE_BLISS_WSR
+				wsrSunColor = DirectLightColor;
+				wsrAmbientColor = AmbientLightColor;
+				wsrSunDir = WsunVec;
+				#ifdef OVERWORLD_SHADER
+					wsrDayFactor = clamp((unsigned_WsunVec.y + 0.05) / 0.15, 0.0, 1.0);
+				#endif
+			#endif
 			
+			// Terrain seen through water or glass already gets that surface's own reflection; tracing its own stacked a second SSR/WSR per pixel (upstream skips it too).
+			specBehindTranslucent = z0 < z && !hand && texelFetch2D(colortex2, ivec2(gl_FragCoord.xy), 0).a > 0.0;
 			FINAL_COLOR = specularReflections(viewPos, feetPlayerPos_normalized, WsunVec, specularNoises, specularNormal, SpecularTex.r, SpecularTex.g, albedo, FINAL_COLOR, DirectLightColor*shadowColor, lightmap.y, hand, flashLightSpecularData);
 		#endif
 
@@ -1444,6 +1569,96 @@ void main() {
 	#if DEBUG_VIEW == debug_VIEW_POSITION
 		gl_FragData[0].rgb = viewPos * 0.001;
 	#endif
+	// ----------------------------------------------------------------------
+	// ACT diagnostic.
+	//
+	//   red   -- compiled in?  Lit means COLORED_LIGHTING_INTERNAL > 0, i.e.
+	//            both ACT_ENABLED and Iris' IRIS_FEATURE_CUSTOM_IMAGES resolved.
+	//   green -- inside the voxel volume?  Lit means SceneToVoxel and
+	//            CheckInsideVoxelVolume agree the camera is tracked.
+	//   blue  -- light in the FLOODFILLED volume at this fragment.
+	//
+	// Reading it: red+green with no blue (yellow, as first observed) means the
+	// volume is positioned correctly but empty -- so the fault is upstream, in
+	// the shadow-pass write or the shadowcomp floodfill, and not in the gate,
+	// the options or the read.  With hold-GUI the same view shows the RAW block
+	// ids instead of the floodfilled light, which separates those two:
+	//
+	//   raw ids lit, light dark  -> the write works, the floodfill does not
+	//   raw ids dark too         -> the write never happens
+	// ----------------------------------------------------------------------
+	#if DEBUG_VIEW == debug_ACT
+		// Gate bitmask, evaluated independently of COLORED_LIGHTING_INTERNAL so it
+		// still reports in the branches where the path is compiled out.  Nothing
+		// here touches the light volume, so it compiles either way.
+		//
+		//   red   -- ACT_ENABLED == 1
+		//   green -- IRIS_FEATURE_CUSTOM_IMAGES defined (Iris accepted CUSTOM_IMAGES)
+		//   blue  -- platform term: not macOS, no Distant Horizons
+		//
+		// White (1,1,1) is the only combination that lets ACT compile in, so if this
+		// view renders anything but white the missing channel names the exact term
+		// that failed.
+		//
+		// This exists because the compile harness CANNOT answer the question:
+		// tools/validate.py puts IRIS_FEATURE_CUSTOM_IMAGES in ENGINE_DEFINES
+		// unconditionally, so a probe there always reports the flag as defined no
+		// matter what the real Iris build does with the macro.
+		float actGateR = 0.0;
+		float actGateG = 0.0;
+		float actGateB = 0.0;
+		#if ACT_ENABLED == 1
+		actGateR = 1.0;
+		#endif
+		#ifdef IRIS_FEATURE_CUSTOM_IMAGES
+		actGateG = 1.0;
+		#endif
+		#if !defined MC_OS_MAC && !(defined DH_TERRAIN || defined DH_WATER)
+		actGateB = 1.0;
+		#endif
+		#ifdef COLORED_LIGHTING_INTERNAL
+			#if COLORED_LIGHTING_INTERNAL > 0
+				vec3 actVoxelPosD = SceneToVoxel(feetPlayerPos) + FlatNormals * 0.55;
+				float insideD = CheckInsideVoxelVolume(actVoxelPosD) ? 1.0 : 0.0;
+
+				vec3 lightD = vec3(0.0);
+				vec3 rawD = vec3(0.0);
+				if (insideD > 0.5) {
+					ivec3 vpD = ivec3(clamp01(actVoxelPosD / vec3(voxelVolumeSize)) * vec3(voxelVolumeSize));
+					vpD = clamp(vpD, ivec3(0), voxelVolumeSize - 1);
+
+					lightD = sqrt(GetLightVolume(clamp01(actVoxelPosD / vec3(voxelVolumeSize)))).rgb * 4.0;
+
+					uint rawD_ = texelFetch(voxel_sampler, vpD, 0).x & 32767u;
+					rawD = vec3(rawD_ > 0u ? 1.0 : 0.0, clamp(float(rawD_) / 255.0, 0.0, 1.0), 0.0);
+				}
+
+				if (hideGUI == 1) {
+					// raw block ids: red = any id written, green = id value
+					gl_FragData[0].rgb = vec3(insideD, rawD.g, rawD.r);
+				} else {
+					gl_FragData[0].rgb = vec3(1.0, insideD, clamp(length(lightD), 0.0, 1.0));
+				}
+				Direct_lighting = vec3(0.0);
+				Indirect_lighting = vec3(0.0);
+			#else
+				gl_FragData[0].rgb = vec3(actGateR, actGateG, actGateB);
+			#endif
+		#else
+			gl_FragData[0].rgb = vec3(actGateR, actGateG, actGateB);
+		#endif
+	#endif
+	// GUI shown: normal render, specular tints WSR hits green and misses red. GUI hidden: the voxel scene traced from the camera (dark red = miss).
+	#if DEBUG_VIEW == debug_WSR
+		#ifdef INCLUDE_BLISS_WSR
+			if (hideGUI == 1) {
+				vec4 wsrDbg = BlissWSR(gbufferModelViewInverse[3].xyz, feetPlayerPos_normalized, feetPlayerPos_normalized);
+				gl_FragData[0].rgb = wsrDbg.a > 0.0 ? wsrDbg.rgb : vec3(0.3, 0.0, 0.0);
+			}
+		#else
+			gl_FragData[0].rgb = vec3(1.0, 0.0, 1.0);
+		#endif
+	#endif
 	#if DEBUG_VIEW == debug_FILTERED_STUFF
 		// if(hideGUI == 0){
 			float value = SSAO_SSS.y;
@@ -1457,5 +1672,42 @@ void main() {
 		// }
 	#endif
 
-	/* RENDERTARGETS:3 */
+	#ifdef WSR_DEFER_RESOLVE
+	{
+		// World-space reflection of the front translucent, recorded by the water pass; added to its colour (x0.1 buffer scale).
+		vec4 translucentOut = texelFetch2D(colortex2, ivec2(gl_FragCoord.xy), 0);
+		if (z0 < 1.0 && translucentOut.a > 0.0) {
+			uvec4 td = imageLoad(wsrTrans_img, ivec2(gl_FragCoord.xy));
+			if (td.w != 0u && abs(uintBitsToFloat(td.w) - z0) < 1e-6) {
+				vec2 baseBW = unpackHalf2x16(td.y);
+				vec3 base = vec3(unpackHalf2x16(td.x), baseBW.x);
+				vec3 rayDir = WsrOctDecode(unpackSnorm2x16(td.z));
+
+				vec3 surfPos = mat3(gbufferModelViewInverse) * toScreenSpace(vec3(texcoord/RENDER_SCALE - TAA_Offset*texelSize*0.5, z0)) + gbufferModelViewInverse[3].xyz;
+				vec3 viewDir = normalize(surfPos - gbufferModelViewInverse[3].xyz);
+				vec3 surfNormal = normalize(rayDir - viewDir);
+
+				wsrSunColor = lightCol.rgb / 2400.0;
+				wsrAmbientColor = averageSkyCol_Clouds / 900.0;
+				wsrSunDir = WsunVec;
+				wsrTracePlayer = false; // the water pass already traced the player
+				vec4 wsr = BlissWSR(surfPos, surfNormal, rayDir);
+				translucentOut.rgb += baseBW.y * wsr.a * (wsr.rgb - base) * 0.1;
+				#if DEBUG_VIEW == debug_WSR
+					translucentOut.rgb = vec3(0.0, 1.0, 0.0) * (0.2 + wsr.a);
+				#endif
+			}
+			#if DEBUG_VIEW == debug_WSR
+				else translucentOut.rgb = td.w != 0u ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 0.0, 1.0);
+			#endif
+		}
+		gl_FragData[1] = translucentOut;
+	}
+	#endif
+
+	#ifdef WSR_DEFER_RESOLVE
+		/* RENDERTARGETS:3,2 */
+	#else
+		/* RENDERTARGETS:3 */
+	#endif
 }

@@ -36,8 +36,12 @@ uniform mat4 gbufferModelView;
 uniform mat4 dhProjection;
 uniform vec3 cameraPosition;
 
+#ifndef diagonal3
 #define diagonal3(m) vec3((m)[0].x, (m)[1].y, m[2].z)
+#endif
+#ifndef projMAD
 #define  projMAD(m, v) (diagonal3(m) * (v) + (m)[3].xyz)
+#endif
 vec4 toClipSpace3(vec3 viewSpacePosition) {
     return vec4(projMAD(dhProjection, viewSpacePosition),-viewSpacePosition.z);
 }

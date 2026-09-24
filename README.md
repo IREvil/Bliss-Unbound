@@ -1,26 +1,60 @@
-# Bliss
-<img src="https://github.com/X0nk/Bliss-Shader/assets/122314734/873c788c-5a48-46c0-9fb5-eac57b4ffa27" width="100%" height="100%">
-I always loved chocapic's shaders, and how customizeable it was. But i wanted MORE.
-i eventually started tweaking the shader, adding settings, breaking stuff, and after a while wanted to impose my own visual style onto the shader.
-i wanted to emphasize a varying scene, where the lighting isn't always the same whenever or wherever you are.
+# Bliss Unbound (Chocapic13' Shaders edit)
 
-### SPECIAL THANKS:
-+ Chocapic13, for the base shader
-+ WoMspace, for spending alot of time creating a DOF overhaul
-+ Null, for doing a huge amount of work creating the voxel floodfill colored lighting
-+ Emin, and Gri573, for teaching me how to stop alot of light leaking
-+ RRe36 and Sixthsurge, for the great ideas to steal
-### [Want to support me? donate on my patreon](https://www.patreon.com/Xonkmoney)
+Bliss Unbound is a fork of [Bliss](https://github.com/X0nk/Bliss-Shader) by X0nk. It keeps Bliss' lighting, sky, clouds and fog, and adds these features ported from [Complementary Reimagined / Unbound](https://github.com/ComplementaryDevelopment/ComplementaryReimagined) by Complementary Development ([complementary.dev](https://www.complementary.dev/)):
 
-# IN-DEVELOPMENT VERSIONS AND RELEASE VERSIONS
-`In-development versions` are the very latest versions, and are released regularly to be tested by anyone. **Please report any issues you find.**
+- **ACT colored lighting**: voxel flood-fill block light with colored light fog. It replaces Bliss' LPV while enabled.
+- **World-space reflections**: ray-traced reflections on blocks, water and glass, including your own player model. The screen-space and world-space passes can be run in either order.
+- **IntegratedPBR+ materials**: per-block smoothness, reflectance, emission and subsurface values for vanilla textures, glowing ores, generated normals and coated textures.
+- **Effects**: connected glass (also in shadows), portal edge glow, colored candle light, global god rays, and an always-visible End orb.
 
-`Release versions` are uploaded when the in-development version is stable enough, and has enough changes to warrant a release. These are the versions uploaded to Modrinth or Curseforge. The release versions are not the very latest version.
-### Download the latest `in-development` version:
- - locate the `green "code" button` on this page. this button is NOT in the `releases` page.
- - click the `green "code" button` and select `"download zip"`.
- - once the zip file finishes downloading, install it like a normal shader. you do NOT need to unzip/extract/decompress.
-### Download the latest `release` version:
- - locate the `"Releases"` tab on the right side of this page.
- - find the release version you want to download. locate the files attactched to it, and download the file named similar to `"Bliss_(version)_chocapic13_shaders_edit.zip"`
- - once the zip file finishes downloading, install it like a normal shader. you do NOT need to unzip/extract/decompress.
+Requires Iris (tested on Iris 1.11 / Minecraft 26.2 with Sodium).
+
+## Presets and main screen
+
+The main settings screen has a **Profile** button with the presets `Bliss Default`, `Medium`, `High` and `Ultra`. The pack ships on **Medium**.
+
+Three settings on the main screen are not part of any preset, so switching presets keeps them:
+
+- **Mood**: Default (AgX), Natural (AgX Minimal), Vibrant (ACES), or Custom (the Tonemap option under Post Processing).
+- **Sun Brightness**: 150k by default.
+- **Moon Brightness**: 600 by default.
+
+Presets live in [`presets/`](presets) as Iris option files (`NAME=value`). You can also drop one next to the pack as `<pack>.txt`. After editing a preset, regenerate the profiles and the shipped defaults:
+
+```
+py tools/presets.py shaders --default=Medium
+```
+
+## Installing
+
+Download the repository as a zip (green **Code** button, then **Download ZIP**) and put it in `.minecraft/shaderpacks`.
+
+## Following upstream Bliss
+
+This repository is a git fork of Bliss. `main` starts at the Bliss commit it was built on, so upstream changes can be merged in:
+
+```
+git remote add upstream https://github.com/X0nk/Bliss-Shader.git
+git fetch upstream
+git merge upstream/Unstable
+```
+
+[`docs/PORTING.md`](docs/PORTING.md) lists every place this fork touches Bliss' own files. It also explains how to move the features onto a different Bliss version. [`docs/PORTING-NOTES.md`](docs/PORTING-NOTES.md) holds the engineering notes from the Complementary port.
+
+## Tools
+
+- `tools/validate.py`: compiles every program with glslangValidator for a given option set, e.g. `py tools/validate.py shaders --set=WORLD_SPACE_REFLECTIONS=true`. `world0/physics_ocean.fsh` fails in the harness only; that is a known issue.
+- `tools/presets.py`: builds the Iris profiles from `presets/*.txt` and writes the default preset into the `#define`s.
+- `tools/apply_options.py`: writes a saved Iris options file back into `settings.glsl`.
+
+## Credits
+
+- **Bliss** by [X0nk](https://github.com/X0nk/Bliss-Shader), the base of this pack.
+- **Chocapic13' Shaders** by [Chocapic13](https://www.curseforge.com/minecraft/customization/chocapic13-shaders), the shader Bliss is an edit of.
+- **Complementary Reimagined / Unbound** by [Complementary Development](https://www.complementary.dev/) ([GitHub](https://github.com/ComplementaryDevelopment/ComplementaryReimagined)). ACT, world-space reflections, IntegratedPBR+ and the effects listed above are ported from Complementary Unbound r5.9.1.
+- Everyone listed in [`CREDITS.txt`](CREDITS.txt).
+
+## License
+
+- Bliss and Chocapic13's code is covered by [`LICENSE.md`](LICENSE.md).
+- The Complementary-derived code (`shaders/lib/materials/**`, `shaders/lib/ipbr/**`, `shaders/lib/voxelization/**` and the hooks that call them) is redistributed as a Modified Pack under the [Complementary License Agreement 1.7](Complementary-License.txt), section 1.3.

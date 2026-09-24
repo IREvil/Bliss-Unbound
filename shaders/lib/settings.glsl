@@ -38,7 +38,7 @@
 ////////////////////////////////////////
 
 #define WAVY_PLANTS
-#define WAVY_STRENGTH 1.0 // [0.1 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
+#define WAVY_STRENGTH 0.5 // [0.1 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0]
 #define WAVY_SPEED 1.0 // [0.001 0.01 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 1.0 1.25 1.5 2.0 3.0 4.0]
 
 // #define Seasons
@@ -87,8 +87,8 @@
 
 #define TORCH_AMOUNT 1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.1 2.2 2.3 2.4 2.5 2.6 2.7 2.8 2.9 3.0 3.1 3.2 3.3 3.4 3.5 3.6 3.7 3.8 3.9 4.0 4.1 4.2 4.3 4.4 4.5 4.6 4.7 4.8 4.9 5.0 5.1 5.2 5.3 5.4 5.5 5.6 5.7 5.8 5.9 6.0 6.1 6.2 6.3 6.4 6.5 6.6 6.7 6.8 6.9 7.0 7.1 7.2 7.3 7.4 7.5 7.6 7.7 7.8 7.9 8.0 8.1 8.2 8.3 8.4 8.5 8.6 8.7 8.8 8.9 9.0 9.1 9.2 9.3 9.4 9.5 9.6 9.7 9.8 9.9 10.0]
 #define TORCH_R 1.0 // [0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99 1.0]
-#define TORCH_G 0.5 // [0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99 1.0]
-#define TORCH_B 0.25 // [0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99 1.0]
+#define TORCH_G 0.7 // [0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99 1.0]
+#define TORCH_B 0.6 // [0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99 1.0]
 
 #define Hand_Held_lights
 #define HANDHELD_LIGHT_RANGE 16 // [1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 105 110 115 120 125 130 135 140 145 150 155 160 165 170 175 180 185 190 195 200 205 210 215 220 225 230 235 240 245 250 255]
@@ -98,10 +98,10 @@
 #define AO_in_sunlight
 #define AO_Strength 1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.1 2.2 2.3 2.4 2.5 2.6 2.7 2.8 2.9 3.0]
 
-// #define SKY_CONTRIBUTION_IN_SSRT
+#define SKY_CONTRIBUTION_IN_SSRT
 
 #define UseQuarterResDepth
-// #define HQ_SSGI
+#define HQ_SSGI
 #define GI_Strength 1.0 // [1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.1 2.2 2.3 2.4 2.5 2.6 2.7 2.8 2.9 3.0 ]
 #define RAY_COUNT 4 // [1 2 3 4 5 6 7 8 9 10 12 14 16 18 21 24 28 32 37 43 49 57 65 75 86 100]
 #define STEPS 8	// [6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99]
@@ -141,7 +141,7 @@ const float entityShadowDistanceMul = 0.25; // [0.01 0.02 0.03 0.04 0.05 0.10 0.
 #define Stochastic_Transparent_Shadows
 
 #define Glass_Tint
-// #define TRANSLUCENT_COLORED_SHADOWS
+#define TRANSLUCENT_COLORED_SHADOWS
 #ifdef TRANSLUCENT_COLORED_SHADOWS
 	#undef Stochastic_Transparent_Shadows
 #endif
@@ -152,6 +152,9 @@ const float entityShadowDistanceMul = 0.25; // [0.01 0.02 0.03 0.04 0.05 0.10 0.
 #define TOGGLE_VL_FOG
 
 #define VL_SAMPLES 8 // [4 6 8 10 12 14 16 20 24 30 40 50]
+// Sun shafts through the shadow map outside fog too.
+// #define GLOBAL_GOD_RAYS
+#define GOD_RAYS_STRENGTH 150 // [25 50 75 100 125 150 200 250 300 400 500]
 
 #define FOG_START_HEIGHT 60 // [-200 -190 -180 -170 -160 -150 -130 -120 -110 -100 -90 -80 -70 -60 -50 -40 -30 -20 -10 0 10 20 30 40 50 60 70 80 90 100 110 120 130 140 150 160 170 180 190 200]
 
@@ -180,7 +183,7 @@ const float entityShadowDistanceMul = 0.25; // [0.01 0.02 0.03 0.04 0.05 0.10 0.
 #define RainFog_amount 0.1 // [0.0 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99 1.0]
 
 #define BLOOMY_FOG 1.0 // [0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0 3.0 4.0 6.0 10.0 15.0 20.0]
-#define BLOOM_STRENGTH 1.0 // [0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0 10.0 15.0 20.0 25.0 50.0 75.0 100.0]
+#define BLOOM_STRENGTH 0.75 // [0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0 10.0 15.0 20.0 25.0 50.0 75.0 100.0]
 
 #define CAVE_FOG
 // #define CAVE_FOG_DARKEN_SKY
@@ -205,7 +208,7 @@ const float entityShadowDistanceMul = 0.25; // [0.01 0.02 0.03 0.04 0.05 0.10 0.
 // ----- BIOME SPECIFIC ENVIORNMENTS SETTINGS ----- //
 //////////////////////////////////////////////////////
 
-// #define PER_BIOME_ENVIRONMENT
+#define PER_BIOME_ENVIRONMENT
 
 #define SWAMP_ENV
 #define SWAMP_UNIFORM_DENSITY 0.3 // [0.0 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99 1.0]
@@ -244,6 +247,125 @@ const float entityShadowDistanceMul = 0.25; // [0.01 0.02 0.03 0.04 0.05 0.10 0.
 #endif
 
 ///////////////////////////////////////////////////
+// ----- INTEGRATEDPBR+ MATERIAL SETTINGS ----- ///
+///////////////////////////////////////////////////
+
+// 0 = Bliss' original LabPBR pipeline: materials come from the resource pack's
+//     _n / _s textures plus Bliss' block id table.
+// 1 = IntegratedPBR+ (ported from Complementary Unbound): materials come from
+//     a block-by-block database, no resource pack required.
+#define IPBR_MODE 1 // [0 1]
+
+#define IPBR_EMISSIVE_MODE 1 // [1 3 2]
+#define MIRROR_TINTED_GLASS 0 // [0 35 70 100]
+// Percent of tinted glass opacity removed (only with MIRROR_TINTED_GLASS 0).
+#define TINTED_GLASS_CLARITY 30 // [0 10 20 30 40 50 60 70]
+
+// IntegratedPBR+ derives emission for glowing ores from the texture itself.
+#define GLOWING_ORE_MASTER 1 // [0 1 2]
+#define GLOWING_ORE_MULT 1.00 // [0.15 0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00 1.10 1.20 1.30 1.40 1.50 1.60 1.70 1.80 1.90 2.00]
+#define GLOWING_AMETHYST 1 // [0 1 2]
+#define GLOWING_LICHEN 1 // [0 1 2]
+
+// Specular response calibration.  Complementary expresses specular strength as
+// a multiplier on a fixed 0.05 Fresnel; Bliss feeds F0 straight into its
+// Fresnel term, so the port compresses it (see lib/ipbr/ipbr_settings.glsl).
+// Raise these if shiny surfaces feel too dull, lower them if highlights blow out.
+#define IPBR_SPECULAR_STRENGTH 100 // [25 50 75 100 125 150 175 200 250 300 400]
+// IPBR blocks whose reflection weight (fresnel x smoothness, as upstream) is below this skip reflections.
+#define IPBR_REFLECTION_THRESHOLD 0.01 // [0.0 0.005 0.01 0.02 0.03 0.05 0.08 0.10]
+// Lets detailed normals shade ambient light too, so relief stays visible without direct sun.
+#define NORMAL_AMBIENT_RELIEF 50 // [0 25 50 75 100 150 200]
+#define IPBR_INTENSE_FRESNEL_MULT 100 // [0 25 50 75 100 125 150 175 200]
+
+// IntegratedPBR+ derives emission for glowing ores from the texture itself.
+#define CUSTOM_EMISSION_INTENSITY 100 // [0 5 7 10 15 20 25 30 35 40 45 50 60 70 80 90 100 110 120 130 140 150 160 170 180 190 200 225 250]
+#define IPBR_EMISSION_STRENGTH 15 // [5 10 15 20 25 30 35 40 50 60 70 80 100]
+
+// IntegratedPBR+ extras.
+//
+// GENERATED_NORMALS derives a normal map from the block texture itself, so
+// vanilla blocks get surface relief without a PBR resource pack.  It forces the
+// tangent basis on, so it costs a little more.
+// COATED_TEXTURES adds a subtle clear-coat speckle so polished blocks (stone,
+// quartz, deepslate, ores) stop looking perfectly flat.
+//
+#define GENERATED_NORMALS
+// #define COATED_TEXTURES
+// Derives the sample offset from the sprite size instead of atlasSize.
+// Try this if generated normals look wrong.
+// #define SAFER_GENERATED_NORMALS
+
+// ---------------------------------------------------------------------------
+// Diagnostics. Iris only exposes an option if a #define line exists for it,
+// so these must be declared even though they are only tested with #ifdef.
+//
+//   GN_TEST_TINT        paint the IPBR albedo magenta, to prove a capture came
+//                       from the modified build rather than a stale one
+//   GN_TEST_CONSTNORMAL force GenerateNormals to return one constant view-space
+//                       normal, to test whether the generated normal affects
+//                       the shading at all
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+//  Grazing-angle reflections
+//
+//  Complementary gives virtually every surface a rough reflection once the view
+//  angle is shallow enough -- it comes from a base Fresnel that every material
+//  carries, independent of how matte the material is head-on.
+//
+//  Bliss' model has the same shape (f0 drives Fresnel, smoothness sets how sharp
+//  the reflection is) but it inverts and squares smoothness into roughness, so a
+//  low-smoothness surface ends up so diffuse that the reflection disappears.
+//  These floors keep a sheen on matte materials without making them glossy
+//  face-on, since Fresnel suppresses the reflection at normal incidence.
+// ---------------------------------------------------------------------------
+// Off by default.  These floors override the one thing that makes Bliss'
+// reflection behave correctly: getReflectionVisibility(f0, roughness) selects
+// materials using BOTH their F0 and their roughness, so smooth surfaces (snow,
+// stone, planks) pick up a sheen while rough ones (grass) do not.  Forcing a
+// smoothness and F0 floor bypasses that selection, which is why enabling it made
+// every block -- grass included -- look wet rather than lacquered, at every
+// angle, and fought the existing sun grazing path.
+//
+// The look that was actually wanted is the intense-Fresnel shape Complementary
+// uses for iron and quartz:
+//     fresnelM = mix(pow2(fresnelM), fresnelM * 0.75 + 0.25, intenseFresnel);
+// a CONSTANT 0.25 reflectance floor rather than an angle-dependent slope.  That
+// is already mapped in all_solid.fsh via IPBR_INTENSE_FRESNEL_MULT.  Raise that
+// to extend the lacquer sheen to more materials instead of using these.
+//
+// #define IPBR_GRAZING_REFLECTIONS
+#define IPBR_GRAZING_SMOOTHNESS 0.7 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
+#define IPBR_GRAZING_F0 0.13 // [0.00 0.05 0.08 0.10 0.11 0.13 0.16 0.20 0.30 0.50]
+
+// #define GN_TEST_TINT
+// #define GN_TEST_CONSTNORMAL
+// Upstream defaults to 100.  Bliss' lighting responds more strongly to a perturbed
+// normal than Complementary's does, so the same multiplier reads as considerably more
+// pronounced here; 50 lands in the same visual range.  The maths is untouched -- this is
+// only the default value, and the slider spans the full range either side of it.
+#define GENERATED_NORMAL_MULT 70 // [10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 110 120 130 140 150 160 170 180 190 200 250 300 400]
+#define GENERATED_NORMAL_RES 128 // [16 32 64 80 96 112 128 144 160 176 192 208 224 240 256 320 384 448 512]
+#define COATED_TEXTURE_MULT 100 // [25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 110 120 130 140 150 160 170 180 190 200]
+
+// Hides armour on the main player. 0 = off, 1 = main player only, 2 = all.
+#define HIDE_ARMOR 0 // [0 1 2]
+
+// Minimum opacity of the empty part of a glass pane. 25 matches Complementary;
+// lower it for more see-through glass.
+#define IPBR_GLASS_OPACITY 25 // [0 5 10 15 20 25 30 40 50 60 75 100]
+
+// Opacity multiplier applied to every translucent block the table classified.
+// Stained glass has no GLASS_OPACITY floor upstream, so use this for it.
+#define IPBR_TRANSLUCENT_ALPHA 100 // [0 10 20 30 40 50 60 70 80 90 100 110 125 150 175 200]
+
+// Water is left to Bliss.  IntegratedPBR+ does not describe water as a
+// material -- upstream it hands over to a complete water renderer with its own
+// colour model, waves, foam and fog.  Set this to 1 only if you want
+// Complementary's water instead of Bliss'.
+#define IPBR_WATER_MATERIAL 0 // [0 1]
+
+///////////////////////////////////////////////////
 // ----- LABPBR MATERIALS RELATED SETTINGS ----- //
 ///////////////////////////////////////////////////
 
@@ -254,7 +376,7 @@ const float entityShadowDistanceMul = 0.25; // [0.01 0.02 0.03 0.04 0.05 0.10 0.
 	#define LIGHTSOURCE_REFLECTION
 #endif
 
-#define EMISSIVE_TYPE 1 // [0 1 2 3]
+#define EMISSIVE_TYPE 2 // [0 1 2 3]
 #define Emissive_Brightness 1.0 // [1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0 10.0 15.0 20.0 25.0 30.0 35.0 40.0 45.0 50.0 100.]
 #define Emissive_Curve 2.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.1 2.2 2.3 2.4 2.5 2.6 2.7 2.8 2.9 3.0 ]
 
@@ -262,14 +384,16 @@ const float entityShadowDistanceMul = 0.25; // [0.01 0.02 0.03 0.04 0.05 0.10 0.
 // #define POM
 // #define Horrible_slope_normals
 #define Adaptive_Step_length
-#define POM_DEPTH 0.25 // [0.025 0.05 0.075 0.1 0.125 0.15 0.20 0.25 0.30 0.50 0.75 1.0]
+#define POM_DEPTH 0.30 // [0.025 0.05 0.075 0.1 0.125 0.15 0.20 0.25 0.30 0.50 0.75 1.0]
 #define MAX_ITERATIONS 35 // [5 10 15 20 25 30 35 40 45 50 60 70 80 90 100 125 150 200 300 400 500]
-#define MAX_DIST 25.0 // [5.0 10.0 15.0 20.0 25.0 35.0 30.0 40.0 50.0 60.0 70.0 80.0 90.0 100.0 125.0 150.0 200.0 300.0 400.0 500.0]
+#define MAX_DIST 400.0 // [5.0 10.0 15.0 20.0 25.0 35.0 30.0 40.0 50.0 60.0 70.0 80.0 90.0 100.0 125.0 150.0 200.0 300.0 400.0 500.0]
 
-#define SSS_TYPE 1 // [0 1 2 3]
+#define SSS_TYPE 2 // [0 1 2 3]
 #define LabSSS_Curve 1.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.1 2.2 2.3 2.4 2.5 2.6 2.7 2.8 2.9 3.0]
 // #define MOB_SSS
-// #define MISC_BLOCK_SSS
+#define MISC_BLOCK_SSS
+// Bliss used 0.50, which lets sunlight scatter through whole solid blocks; lower keeps it to thin edges.
+#define MISC_BLOCK_SSS_AMOUNT 0.30 // [0.26 0.28 0.30 0.33 0.36 0.40 0.45 0.50]
 #define Ambient_SSS
 #define ambientsss_brightness 1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.1 2.2 2.3 2.4 2.5 2.6 2.7 2.8 2.9 3.0]
 #define sss_absorbance_multiplier 1.0 // [0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.1 2.2 2.3 2.4 2.5 2.6 2.7 2.8 2.9 3.0 4.0 5.0 6.0 7.0 8.0 9.0 10.0]
@@ -283,7 +407,7 @@ const float entityShadowDistanceMul = 0.25; // [0.01 0.02 0.03 0.04 0.05 0.10 0.
 #endif
 #define Puddle_Size 1.0 // [0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5]
 
-// #define MATERIAL_AO
+#define MATERIAL_AO
 
 #define NORMAL_MAP_MULT 1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.1 2.2 2.3 2.4 2.5 2.6 2.7 2.8 2.9 3.0 4.0 5.0 6.0 7.0 8.0 9.0 10.0]
 
@@ -303,8 +427,8 @@ const float entityShadowDistanceMul = 0.25; // [0.01 0.02 0.03 0.04 0.05 0.10 0.
 
 #define colortype 2 // 1 = RGB sliders for sun/moon color. 2 = blackbody. [1 2]
 
-#define sun_illuminance 128000.0 //[0.0 10.0 20.0 30.0 40.0 50.0 60.0 70.0 80.0 90.0 100.0 150.0 200.0 300.0 400.0 500.0 600.0 700.0 800.0 900.0 1000.0 2000.0 3000.0 4000.0 5000.0 6000.0 7000.0 8000.0 9000.0 10000.0 11000.0 12000.0 13000.0 14000.0 15000.0 20000.0 30000.0 40000.0 50000.0 60000.0 70000.0 80000.0 90000.0 100000.0 150000.0 200000.0 250000.0 300000.0 400000.0 500000.0]
-#define Sun_temp 6300 // [1000 1100 1200 1300 1400 1500 1600 1700 1800 1900 2000 2100 2200 2300 2400 2500 2600 2700 2800 2900 3000 3100 3200 3300 3400 3500 3600 3700 3800 3900 4000 4100 4200 4300 4400 4500 4600 4700 4800 4900 5000 5100 5200 5300 5400 5500 5600 5700 5800 5900 6000 6100 6200 6300 6400 6500 6600 6700 6800 6900 7000 7100 7200 7300 7400 7500 7600 7700 7800 7900 8000 8100 8200 8300 8400 8500 8600 8700 8800 8900 9000 9100 9200 9300 9400 9500 9600 9700 9800 9900 10000]
+#define sun_illuminance 150000.0 //[0.0 10.0 20.0 30.0 40.0 50.0 60.0 70.0 80.0 90.0 100.0 150.0 200.0 300.0 400.0 500.0 600.0 700.0 800.0 900.0 1000.0 2000.0 3000.0 4000.0 5000.0 6000.0 7000.0 8000.0 9000.0 10000.0 11000.0 12000.0 13000.0 14000.0 15000.0 20000.0 30000.0 40000.0 50000.0 60000.0 70000.0 80000.0 90000.0 100000.0 150000.0 200000.0 250000.0 300000.0 400000.0 500000.0]
+#define Sun_temp 6800 // [1000 1100 1200 1300 1400 1500 1600 1700 1800 1900 2000 2100 2200 2300 2400 2500 2600 2700 2800 2900 3000 3100 3200 3300 3400 3500 3600 3700 3800 3900 4000 4100 4200 4300 4400 4500 4600 4700 4800 4900 5000 5100 5200 5300 5400 5500 5600 5700 5800 5900 6000 6100 6200 6300 6400 6500 6600 6700 6800 6900 7000 7100 7200 7300 7400 7500 7600 7700 7800 7900 8000 8100 8200 8300 8400 8500 8600 8700 8800 8900 9000 9100 9200 9300 9400 9500 9600 9700 9800 9900 10000]
 #define sunColorR 1.0 // [0.0 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99 1.0 ]
 #define sunColorG 0.91 // [0.0 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99 1.0 ]
 #define sunColorB 0.81 // [0.0 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99 1.0 ]
@@ -530,11 +654,22 @@ uniform int moonPhase;
 // ----- COLOR/POST PROCESSING RELATED SETTINGS ----- //
 ////////////////////////////////////////////////////////
 
-#define TONEMAP ToneMap_AgX_minimal // [no_tonemapper reinhard_jodie_ruined reinhard_jodie ToneMap_AgX_minimal ToneMap_AgX ToneMap_Hejl2015 Tonemap_Xonk Tonemap_Uchimura HableTonemap Full_Reinhard_Edit Tonemap_Full_Reinhard reinhard Tonemap_Lottes ACESFilm]
+#define TONEMAP ACESFilm // [no_tonemapper reinhard_jodie_ruined reinhard_jodie ToneMap_AgX_minimal ToneMap_AgX ToneMap_Hejl2015 Tonemap_Xonk Tonemap_Uchimura HableTonemap Full_Reinhard_Edit Tonemap_Full_Reinhard reinhard Tonemap_Lottes ACESFilm]
+// Main-screen mood: 0 Default (AgX), 1 Natural (AgX minimal), 2 Vibrant (ACES), 3 Custom (TONEMAP above).
+#define TONEMAP_MOOD 0 // [0 1 2 3]
+#if TONEMAP_MOOD == 0
+	#define TONEMAP_OPERATOR ToneMap_AgX
+#elif TONEMAP_MOOD == 1
+	#define TONEMAP_OPERATOR ToneMap_AgX_minimal
+#elif TONEMAP_MOOD == 2
+	#define TONEMAP_OPERATOR ACESFilm
+#else
+	#define TONEMAP_OPERATOR TONEMAP
+#endif
 //#define USE_ACES_COLORSPACE_APPROXIMATION
 
 #define CONTRAST_ADAPTATIVE_SHARPENING
-#define SHARPENING 0.35 // [0.0 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99 1.0]
+#define SHARPENING 0.5 // [0.0 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99 1.0]
 
 #define SATURATION 0.0 // [-1.0 -0.99 -0.98 -0.96 -0.94 -0.92 -0.9 -0.88 -0.86 -0.84 -0.82 -0.8 -0.78 -0.76 -0.74 -0.72 -0.7 -0.68 -0.66 -0.64 -0.62 -0.6 -0.58 -0.56 -0.54 -0.52 -0.5 -0.48 -0.46 -0.44 -0.42 -0.4 -0.38 -0.36 -0.34 -0.32 -0.3 -0.28 -0.26 -0.24 -0.22 -0.2 -0.18 -0.16 -0.14 -0.12 -0.1 -0.08 -0.06 -0.04 -0.02 0.0 0.02 0.04 0.06 0.08 0.1 0.12 0.14 0.16 0.18 0.2 0.22 0.24 0.26 0.28 0.3 0.32 0.34 0.36 0.38 0.4 0.42 0.44 0.46 0.48 0.5 0.52 0.54 0.56 0.58 0.6 0.62 0.64 0.66 0.68 0.7 0.72 0.74 0.76 0.78 0.8 0.82 0.84 0.86 0.88 0.9 0.92 0.94 0.96 0.98 0.99 1.0]
 #define CROSSTALK 0.0 // [-1.0 -0.98 -0.96 -0.94 -0.92 -0.9 -0.88 -0.86 -0.84 -0.82 -0.8 -0.78 -0.76 -0.74 -0.72 -0.7 -0.68 -0.66 -0.64 -0.62 -0.6 -0.58 -0.56 -0.54 -0.52 -0.5 -0.48 -0.46 -0.44 -0.42 -0.4 -0.38 -0.36 -0.34 -0.32 -0.3 -0.28 -0.26 -0.24 -0.22 -0.2 -0.18 -0.16 -0.14 -0.12 -0.1 -0.08 -0.06 -0.04 -0.02 0.0 0.02 0.04 0.06 0.08 0.1 0.12 0.14 0.16 0.18 0.2 0.22 0.24 0.26 0.28 0.3 0.32 0.34 0.36 0.38 0.4 0.42 0.44 0.46 0.48 0.5 0.52 0.54 0.56 0.58 0.6 0.62 0.64 0.66 0.68 0.7 0.72 0.74 0.76 0.78 0.8 0.82 0.84 0.86 0.88 0.9 0.92 0.94 0.96 0.98 1.0]
@@ -565,7 +700,7 @@ const vec3 MIDS_TARGET = length(vec3(MIDS_GRADE_R, MIDS_GRADE_G, MIDS_GRADE_B)) 
 const vec3 HIGHLIGHTS_TARGET = length(vec3(HIGHLIGHTS_GRADE_R, HIGHLIGHTS_GRADE_G, HIGHLIGHTS_GRADE_B)) < 0.001 ? vec3(0.0) : normalize(vec3(HIGHLIGHTS_GRADE_R, HIGHLIGHTS_GRADE_G, HIGHLIGHTS_GRADE_B));
 
 
-#define EXPOSURE_MULTIPLIER 1.0 // [0.25 0.4 0.5 0.6 0.7 0.75 0.8 0.85 0.9 0.95 1.0 1.1 1.2 1.3 1.4 1.5 2.0 3.0 4.0]
+#define EXPOSURE_MULTIPLIER 0.85 // [0.25 0.4 0.5 0.6 0.7 0.75 0.8 0.85 0.9 0.95 1.0 1.1 1.2 1.3 1.4 1.5 2.0 3.0 4.0]
 #define AUTO_EXPOSURE
 #define Manual_exposure_value 1.0 // [0.000553 0.000581 0.000611 0.000642 0.000675 0.000710 0.000746 0.000784 0.000825 0.000867 0.000911 0.000958 0.001007 0.001059 0.001113 0.001170 0.001230 0.001294 0.001360 0.001430 0.001503 0.001580 0.001661 0.001746 0.001836 0.001930 0.002029 0.002133 0.002242 0.002357 0.002478 0.002605 0.002739 0.002879 0.003027 0.003182 0.003345 0.003517 0.003697 0.003887 0.004086 0.004296 0.004516 0.004748 0.004991 0.005247 0.005516 0.005799 0.006096 0.006409 0.006737 0.007083 0.007446 0.007828 0.008229 0.008651 0.009095 0.009561 0.010051 0.010567 0.011108 0.011678 0.012277 0.012906 0.013568 0.014264 0.014995 0.015764 0.016572 0.017422 0.018315 0.019254 0.020241 0.021279 0.022370 0.023517 0.024723 0.025991 0.027323 0.028724 0.030197 0.031745 0.033373 0.035084 0.036883 0.038774 0.040762 0.042852 0.045049 0.047358 0.049787 0.052339 0.055023 0.057844 0.060810 0.063927 0.067205 0.070651 0.074273 0.078081 0.082084 0.086293 0.090717 0.095369 0.100258 0.105399 0.110803 0.116484 0.122456 0.128734 0.135335 0.142274 0.149568 0.157237 0.165298 0.173773 0.182683 0.192049 0.201896 0.212247 0.223130 0.234570 0.246596 0.259240 0.272531 0.286504 0.301194 0.316636 0.332871 0.349937 0.367879 0.386741 0.406569 0.427414 0.449328 0.472366 0.496585 0.522045 0.548811 0.576949 0.606530 0.637628 0.670320 0.704688 0.740818 0.778800 0.818730 0.860707 0.904837 0.951229 1.0 1.051271 1.105170 1.161834 1.221402 1.284025 1.349858 1.419067 1.491824 1.568312 1.648721 1.733253 1.822118 1.915540 2.013752 2.117000 2.225540 2.339646 2.459603 2.585709 2.718281 2.857651 3.004166 3.158192 3.320116 3.490342 3.669296 3.857425 4.055199 4.263114 4.481689 4.711470 4.953032 5.206979 5.473947 5.754602 6.049647 6.359819 6.685894 7.028687 7.389056 7.767901 8.166169 8.584858 9.025013 9.487735 9.974182 10.48556 11.02317 11.58834 12.18249 ]
 #define Exposure_Speed 1.0 // [0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0 2.25 2.5 2.75 3.0 4.0 5.0]
@@ -589,7 +724,7 @@ const vec3 aerochrome_color = mix(vec3(1.0, 0.0, 0.0), vec3(0.715, 0.303, 0.631)
 
 
 // #define MOTION_BLUR
-#define MOTION_BLUR_STRENGTH 1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 3.0 4.0 5.0]
+#define MOTION_BLUR_STRENGTH 0.5 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 3.0 4.0 5.0]
 
 // #define CHROMATIC_ABERRATION
 #define CHROMATIC_ABERRATION_STRENGTH 1.0 // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 3.0 4.0 5.0]
@@ -680,9 +815,11 @@ const vec3 aerochrome_color = mix(vec3(1.0, 0.0, 0.0), vec3(0.715, 0.303, 0.631)
 
 // #define DEBUG_endfog
 // #define THE_ORB
-#define ORB_X 0 // [-200 -195 -190 -185 -180 -175 -170 -165 -160 -155 -150 -145 -140 -135 -130 -125 -120 -115 -110 -105 -100 -95 -90 -85 -80 -75 -70 -65 -60 -55 -50 -45 -40 -35 -30 -25 -20 -15 -10 -5 0 5 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 105 110 115 120 125 130 135 140 145 150 155 160 165 170 175 180 185 190 195 200]
-#define ORB_Y 0 // [-200 -195 -190 -185 -180 -175 -170 -165 -160 -155 -150 -145 -140 -135 -130 -125 -120 -115 -110 -105 -100 -95 -90 -85 -80 -75 -70 -65 -60 -55 -50 -45 -40 -35 -30 -25 -20 -15 -10 -5 0 5 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 105 110 115 120 125 130 135 140 145 150 155 160 165 170 175 180 185 190 195 200 210 220 230 240 250]
-#define ORB_Z 0 // [-200 -195 -190 -185 -180 -175 -170 -165 -160 -155 -150 -145 -140 -135 -130 -125 -120 -115 -110 -105 -100 -95 -90 -85 -80 -75 -70 -65 -60 -55 -50 -45 -40 -35 -30 -25 -20 -15 -10 -5 0 5 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 105 110 115 120 125 130 135 140 145 150 155 160 165 170 175 180 185 190 195 200]
+// World height of the orb, fixed above the main island (x = z = 0).
+#define ORB_HEIGHT 150 // [80 90 100 110 120 130 140 150 160 170 180 190 200 220 240 260 280 300]
+#define ORB_SIZE 10 // [4 6 8 10 12 15 20 25 30]
+// Draw the orb itself at any distance, not only where the fog volume reaches it.
+#define ORB_ALWAYS_VISIBLE
 
 #define ORB_R 1.0 // [0.00 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99 1.0]
 #define ORB_G 1.0 // [0.00 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.2 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.3 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.4 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.5 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.6 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.8 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.9 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99 1.0]
@@ -809,31 +946,219 @@ const vec3 aerochrome_color = mix(vec3(1.0, 0.0, 0.0), vec3(0.715, 0.303, 0.631)
 // ----- FLOODFILL [LPV] SETTINGS ----- //
 ///////////////////////////////////////////
 
-//#define LPV_ENABLED
-#define LPV_SIZE 7 // [6 7 8]
-#define LPV_SATURATION 50 // [0 5 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 105 110 115 120 125 130 135 140 145 150 155 160 165 170 175 180 185 190 195 200]
-#define LPV_TINT_SATURATION 100 // [0 5 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 105 110 115 120 125 130 135 140 145 150 155 160 165 170 175 180 185 190 195 200]
+// ===========================================================================
+//  ACT / World-Space Reflections -- Complementary's lighting and reflection path
+//
+//  This is a whole alternative to Bliss' light path, not a layer on top of it.
+//  It replaces the LPV (see the IS_LPV_ENABLED gate below, which stands down
+//  when this is on) and replaces the screen-space reflections.
+//
+//  "ACT" is Complementary's Advanced Color Tracing: a voxel volume of the world
+//  that is floodfilled with coloured light.  It is what lets emissive blocks --
+//  torches, lanterns, candles, portals -- light their surroundings, and it is
+//  the volume the ray-traced world-space reflections march through.
+//
+//  Everything below is off by default so the existing Bliss path is unchanged
+//  until it is deliberately switched over.
+// ===========================================================================
+#define ACT_ENABLED 1 // [0 1]
+
+// Volume size, and therefore how far light and reflections reach.  One voxel
+// spans one block, so the setting is in chunks and the internal value is that
+// many blocks -- which is why upstream's COLORED_LIGHTING values (128..1024)
+// look like distances rather than resolutions.
+#define ACT_DISTANCE 6 // [4 6 8 10 12 16 20 24 28 32]
+
+// Diagnostics for the shadow-pass write.  The volume is empty in game while the
+// gate, the volume geometry and the read side all check out, so one of these two
+// steps is not doing what it should.  With the debug_ACT view and the GUI
+// hidden, green shows the id actually stored, so:
+//
+//   ACT_DEBUG_WRITE_MAT=0, ACT_DEBUG_SKIP_GUARD=0  -- as shipped
+//   ACT_DEBUG_WRITE_MAT=1  -- store mat itself instead of the voxel id, which
+//                             makes the view show what the shadow pass computes
+//                             for mc_Entity.x.  Non-zero means mat is fine and
+//                             the mapping is at fault; zero means mc_Entity is
+//                             not carrying a block id in this program.
+//   ACT_DEBUG_SKIP_GUARD=1 -- bypass UpdateVoxelMap's early-out, to tell a
+//                             rejected id apart from a write that never lands
+#define ACT_DEBUG_WRITE_MAT 0 // [0 1 2]
+#define ACT_DEBUG_SKIP_GUARD 0 // [0 1]
+// ACT_DEBUG_FORCE is currently INERT.
+//
+// It used to OR past both ACT_ENABLED and Iris' custom-image flag, so a leftover
+// value of 1 armed the whole path on its own -- which is why it no longer does.
+// The gate below does not read it.  It stays defined because the menu already
+// offers it, and dropping a registered option makes Iris report the element as
+// unresolvable.
+//
+// It has nothing left to force: both ACT programs were measured to receive
+// COLORED_LIGHTING_INTERNAL == 192 from ACT_ENABLED=1 alone.
+#define ACT_DEBUG_FORCE 0 // [0 1]
+// ACT_DEBUG_SKIP_ELIGIBLE=1 bypasses the render-stage gate around the write.
+// The write guard being bypassed changed nothing, and a stored zero looks the
+// same as no write in the debug view -- so the second gate, and the value
+// actually stored, both need ruling out before the write can be called broken.
+#define ACT_DEBUG_SKIP_ELIGIBLE 0 // [0 1]
+// ACT_DEBUG_BREAK_SHADOW=1 collapses gl_Position in the shadow programs.
+//
+// Everything upstream of the voxel write has been proven: the code compiles in
+// (checked with glslangValidator -E), the gate is on, the volume geometry is
+// right, and a sentinel write still lands nowhere.  That leaves two causes which
+// look identical from the debug view -- the write is never reached, or the image
+// is not bound -- and they need very different fixes.
+//
+// This one is visible without the volume at all: if the shadow map visibly
+// breaks, the shadow program is running and the image binding is at fault; if
+// nothing changes, the program is not executing the way we assume.
+#define ACT_DEBUG_BREAK_SHADOW 0 // [0 1]
+
+// LOW  -- sun and moon only, no specular reflections
+// HIGH -- sun and moon plus full specular reflections on blocks
+#define BLOCK_REFLECT_QUALITY 3 // [0 3]
+
+// -1 POTATO -- Bliss' own forward pass, no world-space water reflections
+//  1 MEDIUM -- SSRT reflections and translucents
+#define WATER_REFLECT_QUALITY -1 // [-1 1]
+// Same choice for glass, ice and other translucents.
+#define GLASS_REFLECT_QUALITY 1 // [-1 1]
+
+// #define WORLD_SPACE_REFLECTIONS
+#define WORLD_SPACE_PLAYER_REF -1 // [-1 1]
+// 1 = world-space first, screen-space only where it misses. 2 = screen-space first, world-space fills misses.
+#define WORLD_SPACE_REF_MODE 2 // [1 2]
+// Brightness of world reflections (percent) by day and by night. Other dimensions use the day value.
+#define WSR_DAY_STRENGTH 70 // [30 40 50 60 70 80 90 100 110 120 130 140 150]
+#define WSR_NIGHT_STRENGTH 125 // [50 75 100 110 120 125 130 140 150 175 200 250 300]
+
+#define COLORED_LIGHT_FOG
+#define COLORED_LIGHT_FOG_I 0.15 // [0.05 0.10 0.15 0.25 0.35 0.45 0.55 0.65 0.75 0.85 0.95 1.05 1.15 1.25 1.35 1.45]
+#define COLORED_LIGHT_STRENGTH 300 // [100 300 500 700 900 1100 1300 1500 1700 2000 2500 3000 4000]
+#define COLORED_LIGHT_SATURATION 100 // [50 60 70 80 90 100 110 120 130 140 150 175 200]
+#define ACT_FIRE_COLOR_WARMNESS 100 // [0 25 50 75 100 125 150 175 200]
+#define XLIGHT_R 100 // [0 25 50 75 100 125 150 175 200 250]
+#define XLIGHT_G 100 // [0 25 50 75 100 125 150 175 200 250]
+#define XLIGHT_B 100 // [0 25 50 75 100 125 150 175 200 250]
+#define COLORED_CANDLE_LIGHT
+
+// Voxel-based helpers upstream ships alongside ACT (both on upstream).
+#define PORTAL_EDGE_EFFECT
+#define CONNECTED_GLASS_EFFECT
+#define PUDDLE_VOXELIZATION 0 // [0 1]
+
+// The volume resolution is FIXED rather than derived from ACT_DISTANCE.
+//
+// Iris declares custom images through shaders.properties, and evaluates the #if
+// around those declarations with a simple evaluator that does not expand a macro
+// whose body is an expression.  Deriving the resolution from an option meant no
+// branch ever matched and no image was ever allocated -- which is why imageStore
+// silently did nothing no matter what the shader did.
+//
+// Fixing the size removes that whole class of failure.  ACT_DISTANCE now controls
+// only how far the floodfill reaches, which is what the option means to a user,
+// and it is applied in lightVoxelization.glsl as effectiveACTdistance.
+#define ACT_VOLUME_RES 192
+
+// ACT_DEBUG_FORCE can no longer arm the path on its own.  It previously ORed past
+// both ACT_ENABLED and Iris' custom-image flag, which meant a leftover debug value
+// of 1 silently enabled the whole ACT path, stood Bliss' LPV down through the
+// mutual exclusion below, and left no working light path at all -- with the
+// debug_ACT view then ignoring every switch, because the path was always on.
+// It now only RELAXES the custom-image requirement, and still needs ACT_ENABLED.
+// The gate deliberately does not test IRIS_FEATURE_CUSTOM_IMAGES.
+//
+// Iris composes that macro from `iris.features.optional` in shaders.properties.
+// It is not inferred from use, and Iris carries a dedicated failure for packs
+// that use images without declaring it ("Custom images are being used, but the
+// feature flag for custom images hasn't been set!").  This pack does declare
+// CUSTOM_IMAGES -- yet the macro is NOT defined in the build this was tested
+// against, which is what kept the whole ACT path compiled out.  Measuring that
+// took a while, because the harness cannot see it: tools/validate.py puts
+// IRIS_FEATURE_CUSTOM_IMAGES in ENGINE_DEFINES unconditionally, so every
+// compile and every probe there reports the flag as defined no matter what the
+// real Iris build does.  The proof came from the game instead -- the old gate
+// rendered the debug view flat blue (compiled out) while this one renders it
+// red with a lit volume.
+//
+// So the gate does not lean on it.  The images below are declared
+// unconditionally, and that declaration is what actually makes Iris allocate
+// them, so the flag can only duplicate what the manifest already guarantees --
+// while tying the whole lighting path to a macro whose value cannot be checked
+// locally, where a wrong guess silently compiles ACT out and quietly leaves
+// the vanilla lightmap in its place.
+//
+// The debug_ACT view reports this gate as a colour bitmask, so the real build
+// answers the question directly instead of it being inferred.
+#if ACT_ENABLED == 1 && !defined MC_OS_MAC && !(defined DH_TERRAIN || defined DH_WATER)
+    #define COLORED_LIGHTING_INTERNAL ACT_VOLUME_RES
+    #ifdef COLORED_LIGHT_FOG
+        #define COLORED_LIGHT_FOG_INTERNAL
+    #endif
+    #ifdef WORLD_SPACE_REFLECTIONS
+        #define WORLD_SPACE_REFLECTIONS_INTERNAL 1
+    #else
+        #define WORLD_SPACE_REFLECTIONS_INTERNAL -1
+    #endif
+#else
+    #define COLORED_LIGHTING_INTERNAL 0
+    #define WORLD_SPACE_REFLECTIONS_INTERNAL -1
+#endif
+
+// Water/glass WSR is traced once per pixel in the lighting composite (like upstream), not in the water pass:
+// there it cost ~0.7 ms at 1440p from overdraw and the extra register load on an already heavy shader.
+#if WORLD_SPACE_REFLECTIONS_INTERNAL > 0 && WORLD_SPACE_REF_MODE == 2
+    #define WSR_TRANSLUCENT_DEFERRED
+#endif
+
+// Iris directive. shadow.culling=reversed is Iris' safe-zone mode: only chunks within voxelDistance blocks
+// always reach the shadow pass (default 0 = the camera's chunk), the rest are frustum-culled out of the voxel volumes.
+#if COLORED_LIGHTING_INTERNAL > 0
+    #if WORLD_SPACE_REFLECTIONS_INTERNAL > 0
+        #if ACT_DISTANCE <= 4
+            const float voxelDistance = 64.0;
+        #else
+            const float voxelDistance = 96.0;
+        #endif
+    #else
+        const float voxelDistance = 32.0;
+    #endif
+#endif
+#define LPV_ENABLED
+#define LPV_SIZE 8 // [6 7 8]
+#define LPV_SATURATION 120 // [0 5 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 105 110 115 120 125 130 135 140 145 150 155 160 165 170 175 180 185 190 195 200]
+#define LPV_TINT_SATURATION 120 // [0 5 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 105 110 115 120 125 130 135 140 145 150 155 160 165 170 175 180 185 190 195 200]
 #define LPV_NORMAL_STRENGTH 50 // [0 5 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100]
 #define LPV_NORMAL_OFFSET
 #define LPV_ENTITY_LIGHTS
 #define LPV_REDSTONE_LIGHTS
-//#define LPV_COLORED_CANDLES
-//#define LPV_VL_FOG_ILLUMINATION
-#define LPV_VL_FOG_ILLUMINATION_BRIGHTNESS 100 // [0 5 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 105 110 115 120 125 130 135 140 145 150 155 160 165 170 175 180 185 190 195 200]]
+#define LPV_COLORED_CANDLES
+#define LPV_VL_FOG_ILLUMINATION
+#define LPV_VL_FOG_ILLUMINATION_BRIGHTNESS 10 // [0 5 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 105 110 115 120 125 130 135 140 145 150 155 160 165 170 175 180 185 190 195 200]]
 
 // Fix for making nether/end work until next Iris release to fix shadow matrices
 //#define LPV_NOSHADOW_HACK
 
 #ifdef LPV_ENABLED
-	#ifdef IRIS_FEATURE_CUSTOM_IMAGES
+	// Bliss' LPV and Complementary's coloured lighting are two implementations
+	// of the same thing: a floodfilled light volume.  They are alternatives,
+	// not companions -- running both would write two voxel volumes every frame
+	// for one visual result -- so the Complementary path wins when it is on.
+	#if COLORED_LIGHTING_INTERNAL == 0
 		#define IS_LPV_ENABLED
-
 		const float voxelDistance = 64.0;
 	#endif
 #endif
 
+// Block light in the volumetric fog: Bliss' LPV when it runs, otherwise ACT's coloured light fog.
+#if defined LPV_VL_FOG_ILLUMINATION && defined IS_LPV_ENABLED
+	#define BLOCKLIGHT_FOG
+#elif defined COLORED_LIGHT_FOG_INTERNAL
+	#define BLOCKLIGHT_FOG
+	#define BLOCKLIGHT_FOG_ACT
+#endif
+
 // ruining parts of the effect to make it more like vanilla floodfill
-// #define VANILLA_LIGHTMAP_MASK
+#define VANILLA_LIGHTMAP_MASK
 
 ////////////////////////////////
 // ----- DEBUG SETTINGS ----- //
@@ -856,7 +1181,17 @@ const vec3 aerochrome_color = mix(vec3(1.0, 0.0, 0.0), vec3(0.715, 0.303, 0.631)
 #define debug_FORWARD_RENDERING 14
 #define debug_FORWARD_COLOR_TINT 15
 #define debug_DEFERRED_RENDERING 16
-#define DEBUG_VIEW debug_OFF // [debug_OFF debug_SHADOWMAP debug_NORMALS debug_SPECULAR debug_INDIRECT debug_DIRECT debug_VIEW_POSITION debug_DH_WATER_BLENDING debug_FILTERED_STUFF debug_DEPTHTEX0 debug_DEPTHTEX1 debug_MATERIAL_SSS debug_MATERIAL_EMISSION debug_LIGHTMAPS debug_FORWARD_RENDERING debug_FORWARD_COLOR_TINT debug_DEFERRED_RENDERING]
+#define debug_MATERIAL_ID 17
+#define debug_SMOOTHNESS 18
+#define debug_IPBR_EMISSION 19
+#define debug_TRANSLUCENT 20
+#define debug_GENERATED_NORMALS 21
+#define debug_SPRITE_SIZE 22
+#define debug_TEXTURE_GRADIENT 23
+#define debug_TANGENT 24
+#define debug_ACT 25
+#define debug_WSR 26
+#define DEBUG_VIEW debug_OFF // [debug_OFF debug_SHADOWMAP debug_NORMALS debug_SPECULAR debug_INDIRECT debug_DIRECT debug_VIEW_POSITION debug_DH_WATER_BLENDING debug_FILTERED_STUFF debug_DEPTHTEX0 debug_DEPTHTEX1 debug_MATERIAL_SSS debug_MATERIAL_EMISSION debug_LIGHTMAPS debug_FORWARD_RENDERING debug_FORWARD_COLOR_TINT debug_DEFERRED_RENDERING debug_MATERIAL_ID debug_SMOOTHNESS debug_IPBR_EMISSION debug_TRANSLUCENT debug_GENERATED_NORMALS debug_SPRITE_SIZE debug_TEXTURE_GRADIENT debug_TANGENT debug_ACT debug_WSR]
 // #define ISOLATE_RESOURCEPACK_SKY
 
 #if DEBUG_VIEW == debug_DEPTHTEX0 || DEBUG_VIEW == debug_DEPTHTEX1

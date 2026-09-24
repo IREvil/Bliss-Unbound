@@ -1,4 +1,4 @@
-#version 120
+#version 130
 
 #define OVERWORLD_SHADER
 #define TWILIGHT_FOREST_FLAG

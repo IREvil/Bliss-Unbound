@@ -73,8 +73,12 @@ uniform float dhNearPlane;
 #include "/lib/Shadows.glsl"
 
 #define ffstep(x,y) clamp((y - x) * 1e35,0.0,1.0)
+#ifndef diagonal3
 #define diagonal3(m) vec3((m)[0].x, (m)[1].y, m[2].z)
+#endif
+#ifndef projMAD
 #define  projMAD(m, v) (diagonal3(m) * (v) + (m)[3].xyz)
+#endif
 vec3 toScreenSpace(vec3 p) {
 	vec4 iProjDiag = vec4(gbufferProjectionInverse[0].x, gbufferProjectionInverse[1].y, gbufferProjectionInverse[2].zw);
     vec3 p3 = p * 2. - 1.;
@@ -409,7 +413,20 @@ void main() {
 	#if defined DENOISE_SSS_AND_SSAO && indirect_effect == 1
 		if(z >= 1.0) FlatNormals = normal;
 
-		vec2 SSAO_SSS = SSAO(viewPos, worldToView(normal), worldToView(FlatNormals), hand, noise);
+		// le perfecto bliss: the first normal orients SSAO's screen-space sampling
+		// hemisphere.  Passing the shaded normal means generated normals feed it,
+		// and because the hemisphere is sampled in *screen space* every texel gets
+		// a slightly different set of neighbours.  The result is a mesh of
+		// on/off occlusion that tracks the texture, is clean when a face is viewed
+		// dead-on, shifts with the camera, and flips white or black with the light
+		// direction.  Complementary's generated normals never reach a screen-space
+		// AO/SSS hemisphere, so the same perturbation is harmless there.
+		//
+		// The geometric normal gives the same AO/SSS as before for everything else
+		// and removes the interaction.  The cost is losing normal-mapped detail in
+		// the screen-space occlusion term -- the same detail that was producing the
+		// artifact -- and Complementary has none there either.
+		vec2 SSAO_SSS = SSAO(viewPos, worldToView(FlatNormals), worldToView(FlatNormals), hand, noise);
 		
 		#ifndef OLD_INDIRECT_SSS
 			SSAO_SSS.y = clamp(SSAO_SSS.y + 0.5 * lightmap.y*lightmap.y,0.0,1.0);
@@ -440,7 +457,17 @@ void main() {
 	float SpecularTex = texture2D(colortex8,texcoord).z;
 	float LabSSS = clamp((-64.0 + SpecularTex * 255.0) / 191.0 ,0.0,1.0);
 
-	float NdotL = clamp(dot(normal,WsunVec),0.0,1.0);
+	// le perfecto bliss: the shadow term's NdotL must come from the GEOMETRIC
+	// normal, not the shaded one.
+	//
+	// Downstream this feeds `distortThresh = (sqrt(1.0-NdotL*NdotL)/NdotL+0.7)`,
+	// which divides by NdotL.  A perturbed normal drives NdotL toward zero on
+	// individual fragments, so 1/NdotL explodes and the shadow bias swings from
+	// texel to texel -- a hard, texture-locked shadow pattern, indifferent to the
+	// light's intensity and unaffected by how large the perturbation is.
+	// FlatNormals is also correct on principle: a shadow bias belongs to the
+	// geometry, not to the surface shading detail.
+	float NdotL = clamp(dot(FlatNormals,WsunVec),0.0,1.0);
 	float vanillAO = clamp(texture2D(colortex15,texcoord).a,0.0,1.0)  ;
 
 	float minshadowfilt = Min_Shadow_Filter_Radius;

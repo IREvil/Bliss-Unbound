@@ -1,3 +1,4 @@
+#include "/lib/ipbr/id_decode.glsl"
 #include "/lib/settings.glsl"
 #include "/lib/res_params.glsl"
 #include "/lib/items.glsl"
@@ -45,8 +46,12 @@ flat varying float HELD_ITEM_BRIGHTNESS;
 
 #include "/lib/TAA_jitter.glsl"
 
+#ifndef diagonal3
 #define diagonal3(m) vec3((m)[0].x, (m)[1].y, m[2].z)
+#endif
+#ifndef projMAD
 #define  projMAD(m, v) (diagonal3(m) * (v) + (m)[3].xyz)
+#endif
 vec4 toClipSpace3(vec3 viewSpacePosition) {
     return vec4(projMAD(gl_ProjectionMatrix, viewSpacePosition),-viewSpacePosition.z);
 }		
@@ -92,7 +97,7 @@ void main() {
 	HELD_ITEM_BRIGHTNESS = 0.0;
 
 	#ifdef Hand_Held_lights
-		if(heldItemId > 999 || heldItemId2 > 999) HELD_ITEM_BRIGHTNESS = 0.9;
+		if(DecodeBlissItemIdInt(heldItemId) > 999 || DecodeBlissItemIdInt(heldItemId2) > 999) HELD_ITEM_BRIGHTNESS = 0.9;
 	#endif
 
 

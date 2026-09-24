@@ -1,8 +1,19 @@
-#version 120
+#version 400 compatibility
 #include "/lib/settings.glsl"
+#include "/lib/ipbr/ipbr_settings.glsl"
+#include "/lib/ipbr/id_decode.glsl"
 #ifdef IS_LPV_ENABLED
 	#extension GL_ARB_explicit_attrib_location: enable
 	#extension GL_ARB_shader_image_load_store: enable
+#endif
+#if COLORED_LIGHTING_INTERNAL > 0
+	#extension GL_ARB_shader_image_load_store: enable
+	#if WORLD_SPACE_REFLECTIONS_INTERNAL > 0
+		#extension GL_ARB_shader_storage_buffer_object: enable
+		#extension GL_ARB_shading_language_420pack: enable
+		#extension GL_ARB_gpu_shader5: enable
+		#extension GL_ARB_shading_language_packing: enable
+	#endif
 #endif
 
 #define RENDER_SHADOW
@@ -43,6 +54,13 @@ uniform vec3 shadowLightVec;
 uniform float shadowMaxProj;
 attribute vec4 mc_midTexCoord;
 varying vec4 color;
+#ifdef CONNECTED_GLASS_EFFECT
+	// xy = sprite size in UV for glass (0 otherwise): its shadow samples the sprite centre so frames cast no lines.
+	varying vec2 shadowCGSprite;
+	#if !(COLORED_LIGHTING_INTERNAL > 0 && WORLD_SPACE_REFLECTIONS_INTERNAL > 0)
+		uniform sampler2D tex;
+	#endif
+#endif
 
 attribute vec4 mc_Entity;
 uniform int blockEntityId;
@@ -53,7 +71,7 @@ uniform int entityId;
 #include "/lib/blocks.glsl"
 #include "/lib/entities.glsl"
 
-#ifdef IS_LPV_ENABLED
+#if defined IS_LPV_ENABLED || COLORED_LIGHTING_INTERNAL > 0
 	#ifdef IRIS_FEATURE_BLOCK_EMISSION_ATTRIBUTE
 		attribute vec4 at_midBlock;
 	#else
@@ -62,8 +80,79 @@ uniform int entityId;
     uniform int currentRenderedItemId;
 	uniform int renderStage;
 
+	#include "/lib/items.glsl"
+	#include "/lib/ipbr/ipbr_settings.glsl"
+	#include "/lib/ipbr/id_decode.glsl"
+#endif
+
+#ifdef IS_LPV_ENABLED
 	#include "/lib/voxel_common.glsl"
 	#include "/lib/voxel_write.glsl"
+#endif
+
+// Complementary's ACT light volume.  Separate from Bliss' LPV above; the two are
+// mutually exclusive (see the IS_LPV_ENABLED gate in settings.glsl), so at most
+// one of these two branches is ever active.
+#if COLORED_LIGHTING_INTERNAL > 0
+	layout(r16ui) uniform writeonly uimage3D voxel_img;
+
+	// lightVoxelization.glsl also contains the read path (GetLightVolume), and
+	// GLSL needs every referenced identifier declared even in functions this
+	// program never calls.  Upstream gets the sampler from lib/uniforms.glsl,
+	// which its shadow program includes; we declare it here instead.  Iris pairs
+	// voxel_img and voxel_sampler onto the same buffer.
+	uniform usampler3D voxel_sampler;
+
+	// Same reason: GetComplexLightVolume reads the floodfilled copy of the light
+	// volume, so these must be in scope wherever lightVoxelization.glsl is.
+	// Upstream declares them in lib/uniforms.glsl.  The floodfill itself runs in
+	// the shadowcomp compute pass, which owns the matching images.
+	uniform sampler3D floodfill_sampler;
+	uniform sampler3D floodfill_sampler_copy;
+
+	// lightVoxelization.glsl expects these from its host.  Upstream derives them
+	// in lib/common.glsl: Iris 1.8+ supplies the fractional camera position
+	// directly, otherwise it is the fractional part of cameraPosition.
+	uniform int framemod2;
+	#if IRIS_VERSION >= 10800
+        vec3 cameraPositionBestFract = fract(cameraPosition);
+	#else
+		vec3 cameraPositionBestFract = fract(cameraPosition);
+	#endif
+
+	// lightVoxelization.glsl gates its write entry point on SHADOW &&
+	// VERTEX_SHADER, which Complementary's shadow program defines for itself.
+	// Scoped to the include and undone immediately after, so they cannot change
+	// how Bliss' own code below compiles.
+	#define VERTEX_SHADER
+	#define SHADOW
+	#include "/lib/voxelization/act_common.glsl"
+	#include "/lib/voxelization/lightVoxelization.glsl"
+
+	#if WORLD_SPACE_REFLECTIONS_INTERNAL > 0
+		layout(r16ui) uniform writeonly uimage3D wsr_img;
+		layout(r8ui) uniform writeonly uimage3D wsr_lod_img;
+		uniform usampler3D wsr_sampler;
+		uniform sampler2D tex;
+		uniform ivec2 atlasSize;
+		uniform vec3 previousCameraPosition;
+		vec3 previousCameraPositionBestFract = fract(previousCameraPosition);
+		vec2 texCoord;
+		vec2 lmCoord;
+		vec4 glColor;
+		// mc_midTexCoord can read as zero here; main() substitutes the 16px atlas-grid centre.
+		vec4 wsrMidTexCoord;
+		#if WORLD_SPACE_PLAYER_REF == 1
+			uniform vec3 playerLookVector;
+			uniform float framemod4;
+			uniform float framemod600;
+		#endif
+		#define mc_midTexCoord wsrMidTexCoord
+		#include "/lib/voxelization/reflectionVoxelization.glsl"
+		#undef mc_midTexCoord
+	#endif
+	#undef SHADOW
+	#undef VERTEX_SHADER
 #endif
 
 const float PI48 = 150.796447372*WAVY_SPEED;
@@ -114,8 +203,12 @@ bool intersectCone(float coneHalfAngle, vec3 coneTip , vec3 coneAxis, vec3 rayOr
 
   return true;
 }
+#ifndef diagonal3
 #define diagonal3(m) vec3((m)[0].x, (m)[1].y, m[2].z)
+#endif
+#ifndef projMAD
 #define  projMAD(m, v) (diagonal3(m) * (v) + (m)[3].xyz)
+#endif
 
 
 
@@ -144,6 +237,13 @@ vec3 viewToWorld(vec3 viewPos) {
 void main() {
 	texcoord.xy = gl_MultiTexCoord0.xy;
 	color = gl_Color;
+	#ifdef CONNECTED_GLASS_EFFECT
+	{
+		int cgMat = int(mc_Entity.x + 0.5);
+		bool cgGlass = cgMat == 30008 || (cgMat >= 31000 && cgMat < 32000) || cgMat == 32008 || cgMat == 32012;
+		shadowCGSprite = cgGlass ? 16.0 / vec2(textureSize(tex, 0)) : vec2(0.0);
+	}
+	#endif
 
 	vec3 position = mat3(gl_ModelViewMatrix) * vec3(gl_Vertex) + gl_ModelViewMatrix[3].xyz;
 	
@@ -206,6 +306,32 @@ void main() {
 		PopulateShadowVoxel(playerpos);
 	#endif
 
+	// ACT light volume write.  `mat` is Iris' block id, which is what the
+	// ported lightVoxelization table is keyed on; the same id also drives the
+	// blocklightColors lookup on the read side.
+	#if COLORED_LIGHTING_INTERNAL > 0
+		UpdateVoxelMap(int(mc_Entity.x + 0.5));
+
+		#if WORLD_SPACE_REFLECTIONS_INTERNAL > 0
+			if (gl_VertexID % 4 == 0) {
+				texCoord = gl_MultiTexCoord0.xy;
+				lmCoord = clamp(((gl_TextureMatrix[1] * gl_MultiTexCoord1).xy - 0.03125) * 1.06667, 0.0, 1.0);
+				glColor = gl_Color;
+
+				vec2 spriteUV = 16.0 / vec2(textureSize(tex, 0));
+				vec2 midDelta = abs(texCoord - mc_midTexCoord.xy);
+				bool midUsable = all(greaterThan(midDelta, vec2(1e-7))) && all(lessThan(midDelta, spriteUV));
+				wsrMidTexCoord = midUsable ? mc_midTexCoord : vec4((floor(texCoord / spriteUV) + 0.5) * spriteUV, 0.0, 1.0);
+
+				UpdateSceneVoxelMap(int(mc_Entity.x + 0.5), mat3(shadowModelViewInverse) * gl_NormalMatrix * gl_Normal, playerpos);
+			}
+			#if WORLD_SPACE_PLAYER_REF == 1
+				texCoord = gl_MultiTexCoord0.xy;
+				UpdatePlayerVertexList(playerpos);
+			#endif
+		#endif
+	#endif
+
 	// #ifdef WAVY_PLANTS
   	// 	bool istopv = gl_MultiTexCoord0.t < mc_midTexCoord.t;
   	// 	if (
@@ -225,7 +351,8 @@ void main() {
   	// 	}
 	// #endif
 
-	int blockId = int(mc_Entity.x + 0.5);
+	// Iris gives Complementary's numbering; the waving categories below are Bliss'.
+	int blockId = DecodeBlissBlockIdInt(int(mc_Entity.x + 0.5));
 
 	vec3 worldpos = playerpos;
 	#ifdef WAVY_PLANTS
@@ -275,4 +402,15 @@ void main() {
 	if (blockId == BLOCK_WATER) gl_Position.w = -1.0;
 
   	gl_Position.z /= 6.0;
+
+	#if COLORED_LIGHTING_INTERNAL > 0 && WORLD_SPACE_REFLECTIONS_INTERNAL > 0 && WORLD_SPACE_PLAYER_REF == 1 && !defined RENDER_PLAYER_SHADOWS && !defined RENDER_ENTITY_SHADOWS
+		// Only here for the reflection vertex list; keep it out of the shadow map.
+		if (entityId == 50017) gl_Position = vec4(3.0, 3.0, 3.0, 1.0);
+	#endif
+
+	#if ACT_DEBUG_BREAK_SHADOW == 1
+		// Diagnostics: clip EVERYTHING off-screen so no shadow is cast at all.
+		// Must be LAST in main(), after gl_Position is final, or it is overwritten.
+		gl_Position = vec4(3.0, 3.0, 3.0, 1.0);
+	#endif
 }

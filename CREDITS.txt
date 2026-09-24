@@ -39,3 +39,25 @@ Temporal credits entry to people who added more mod support to Bliss:
 	MikiP98 / https://github.com/MikiP98 | Miki-Liki (Modrinth)
 	Benjamin Rühl / https://github.com/benruehl
 	ludo_silver (discord)
+
+################################################################################
+# Bliss Unbound: code ported from Complementary
+################################################################################
+
+These parts are ported from Complementary Unbound r5.9.1:
+  - the IntegratedPBR+ material system (the block-by-block material database in
+    shaders/lib/materials/**, the id translation in shaders/lib/ipbr/** and the
+    IPBR_MODE toggle)
+  - ACT colored lighting and world-space reflections (shaders/lib/voxelization/**)
+  - connected glass, portal edge, colored candle light and player reflections
+
+	Complementary Development / https://www.complementary.dev/
+	https://github.com/ComplementaryDevelopment/ComplementaryReimagined
+
+Redistributed under the terms of the Complementary License Agreement 1.7,
+section 1.3 ("Modified Pack").  The unmodified licence is included in this pack
+as Complementary-License.txt.
+
+Ported and integrated into Bliss by the Bliss Unbound project
+(https://github.com/IREvil/bliss-unbound).
+See docs/PORTING-NOTES.md for what was transplanted and what was left out.

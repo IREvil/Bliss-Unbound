@@ -82,8 +82,12 @@ uniform float eyeAltitude;
 
 #include "/lib/sky_gradient.glsl"
 
+#ifndef diagonal3
 #define diagonal3(m) vec3((m)[0].x, (m)[1].y, m[2].z)
+#endif
+#ifndef projMAD
 #define  projMAD(m, v) (diagonal3(m) * (v) + (m)[3].xyz)
+#endif
 
 float luma(vec3 color) {
 	return dot(color,vec3(0.21, 0.72, 0.07));

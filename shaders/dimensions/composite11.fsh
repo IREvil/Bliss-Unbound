@@ -301,10 +301,10 @@ void main() {
 	#endif
 
 	#ifndef USE_ACES_COLORSPACE_APPROXIMATION
-		col = LinearTosRGB(TONEMAP(col));
+		col = LinearTosRGB(TONEMAP_OPERATOR(col));
 	#else
 		col = col * ACESInputMat;
-		col = TONEMAP(col);
+		col = TONEMAP_OPERATOR(col);
 
 		col = LinearTosRGB(clamp(col * ACESOutputMat, 0.0, 1.0));
 	#endif

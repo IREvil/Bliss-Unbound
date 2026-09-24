@@ -5,6 +5,8 @@
 #include "/lib/blocks.glsl"
 #include "/lib/entities.glsl"
 #include "/lib/items.glsl"
+#include "/lib/ipbr/ipbr_settings.glsl"
+#include "/lib/ipbr/id_decode.glsl"
 
 /*
 !! DO NOT REMOVE !!
@@ -18,6 +20,12 @@ Read the terms of modification and sharing before changing something below pleas
 #undef POM
 #endif
 
+// IntegratedPBR+ owns the normal in IPBR mode, and it has no heightmap to
+// trace, so Bliss' parallax occlusion mapping stands down.
+#ifdef IPBR
+	#undef POM
+#endif
+
 #ifndef MC_NORMAL_MAP
 #undef POM
 #endif
@@ -27,7 +35,7 @@ Read the terms of modification and sharing before changing something below pleas
 #endif
 
 
-varying vec4 color;
+varying vec4 vColor;
 varying float VanillaAO;
 
 varying vec4 lmtexcoord;
@@ -38,10 +46,21 @@ varying vec4 normalMat;
 	varying vec4 vtexcoord;
 // #endif
 
-#ifdef MC_NORMAL_MAP
+// FlatNormals is used unconditionally by the fragment stage, so it cannot live
+// inside the MC_NORMAL_MAP guard.
+varying vec3 FlatNormals;
+
+#if defined MC_NORMAL_MAP || defined IPBR_NEEDS_TANGENT
 	varying vec4 tangent;
+	// TEMPORARY TEST: do not request at_tangent.  GENERATED_NORMALS turns on
+	// exactly one thing besides the GenerateNormals call -- IPBR_NEEDS_TANGENT,
+	// which reads this attribute.  The call's output is excluded (a constant
+	// normal left the mesh unchanged) and so is the varying's use (bypassing
+	// tangent.rgb left it unchanged).  The attribute REQUEST has never been
+	// excluded: asking Iris/Sodium for at_tangent adds tangent data to the
+	// vertex format.  The varying below is still declared and written, just
+	// from a constant, so consumers keep compiling.
 	attribute vec4 at_tangent;
-	varying vec3 FlatNormals;
 #endif
 
 uniform float frameTimeCounter;
@@ -53,10 +72,18 @@ attribute vec4 mc_midTexCoord;
 
 uniform int blockEntityId;
 uniform int entityId;
-flat varying float blockID;
-
 uniform int heldItemId;
 uniform int heldItemId2;
+uniform int currentRenderedItemId;
+flat varying float blockID;
+
+// Raw Iris id (Complementary's `mat`), passed through untouched so the
+// fragment stage can run integratedPBR+ against its own numbering.
+flat varying float irisBlockId;
+
+// (DecodeBlissBlockId / DecodeBlissBlockIdInt / DecodeBlissEntityIdInt come from lib/ipbr/id_decode.glsl)
+int blissEntityId;
+
 flat varying float HELD_ITEM_BRIGHTNESS;
 
 
@@ -108,8 +135,12 @@ float detectCameraMovement(){
 
 
 							
+#ifndef diagonal3
 #define diagonal3(m) vec3((m)[0].x, (m)[1].y, m[2].z)
+#endif
+#ifndef projMAD
 #define  projMAD(m, v) (diagonal3(m) * (v) + (m)[3].xyz)
+#endif
 vec4 toClipSpace3(vec3 viewSpacePosition) {
     return vec4(projMAD(gl_ProjectionMatrix, viewSpacePosition),-viewSpacePosition.z);
 }
@@ -183,18 +214,22 @@ void main() {
 
 	gl_Position = ftransform();
 
+	// Resolve both id spaces up front: Iris' raw values drive integratedPBR+,
+	// the decoded ones keep every existing Bliss check working.
+	blissEntityId = DecodeBlissEntityIdInt(entityId);
+
 	#if defined ENTITIES && defined IS_IRIS
 		// force out of frustum
-		if (entityId == 1599) gl_Position.z -= 10000.0;
+		if (blissEntityId == 1599) gl_Position.z -= 10000.0;
 	#endif
 
 	vec3 position = mat3(gl_ModelViewMatrix) * vec3(gl_Vertex) + gl_ModelViewMatrix[3].xyz;
 
     /////// ----- COLOR STUFF ----- ///////
-	color = gl_Color;
+	vColor = gl_Color;
 
-	VanillaAO = 1.0 - clamp(color.a,0,1);
-	if (color.a < 0.3) color.a = 1.0; // fix vanilla ao on some custom block models.
+	VanillaAO = 1.0 - clamp(vColor.a,0,1);
+	if (vColor.a < 0.3) vColor.a = 1.0; // fix vanilla ao on some custom block models.
 	
 
 
@@ -216,7 +251,7 @@ void main() {
 
 
 
-	#ifdef MC_NORMAL_MAP
+	#if defined MC_NORMAL_MAP || defined IPBR_NEEDS_TANGENT
 		vec3 alterTangent = at_tangent.rgb;
 
 		tangent = vec4(normalize(gl_NormalMatrix * alterTangent.rgb), at_tangent.w);
@@ -226,7 +261,10 @@ void main() {
 	
 	FlatNormals = normalMat.xyz;
 
-	blockID = mc_Entity.x ;
+	irisBlockId = mc_Entity.x;
+	blockID = DecodeBlissBlockId(mc_Entity.x);
+
+	int blissBlockEntityId = DecodeBlissBlockIdInt(blockEntityId);
 
 	if(blockID == BLOCK_GROUND_WAVING_VERTICAL || blockID == BLOCK_GRASS_SHORT || blockID == BLOCK_GRASS_TALL_LOWER || blockID == BLOCK_GRASS_TALL_UPPER ) normalMat.a = 0.60;
 
@@ -235,9 +273,9 @@ void main() {
 	SIGN = 0;
 
 	#if defined WORLD && !defined HAND
-		if(blockEntityId == BLOCK_SIGN) SIGN = 1;
+		if(blissBlockEntityId == BLOCK_SIGN) SIGN = 1;
 
-		if(blockEntityId == BLOCK_END_PORTAL || blockEntityId == 187) PORTAL = 1;
+		if(blissBlockEntityId == BLOCK_END_PORTAL || blissBlockEntityId == BLOCK_END_GATEWAY) PORTAL = 1;
 	#endif
 	
 	NameTags = 0;
@@ -245,18 +283,18 @@ void main() {
 #ifdef ENTITIES
 
 	// disallow POM to work on item frames.
-	if(entityId == ENTITY_ITEM_FRAME) SIGN = 1;
+	if(blissEntityId == ENTITY_ITEM_FRAME) SIGN = 1;
 
 
 	// try and single out nametag text and then discard nametag background
 	// if( dot(gl_Color.rgb, vec3(1.0/3.0)) < 1.0) NameTags = 1;
 	// if(gl_Color.a < 1.0) NameTags = 1;
 	// if(gl_Color.a >= 0.24 && gl_Color.a <= 0.25 ) gl_Position = vec4(10,10,10,1);
-	if(entityId == ENTITY_SSS_MEDIUM || entityId == ENTITY_SSS_WEAK || entityId == ENTITY_PLAYER || entityId == 2468) normalMat.a = 0.45;
+	if(blissEntityId == ENTITY_SSS_MEDIUM || blissEntityId == ENTITY_SSS_WEAK || blissEntityId == ENTITY_PLAYER || entityId == 2468) normalMat.a = 0.45;
 	
 #endif
 
-	if(mc_Entity.x == BLOCK_AIR_WAVING) normalMat.a = 0.55;
+	if(blockID == BLOCK_AIR_WAVING) normalMat.a = 0.55;
 
     /////// ----- EMISSIVE STUFF ----- ///////
 		EMISSIVE = 0.0;
@@ -265,15 +303,15 @@ void main() {
 
 	HELD_ITEM_BRIGHTNESS = 0.0;
 	#ifdef Hand_Held_lights
-		if(heldItemId > 999 || heldItemId2 > 999 ) HELD_ITEM_BRIGHTNESS = 0.9;
+		if(DecodeBlissItemIdInt(heldItemId) > 999 || DecodeBlissItemIdInt(heldItemId2) > 999 ) HELD_ITEM_BRIGHTNESS = 0.9;
 	#endif
 
 	// normal block lightsources		
-	if(mc_Entity.x >= 100 && mc_Entity.x < 300) EMISSIVE = 0.5;
+	if(blockID >= 100 && blockID < 300) EMISSIVE = 0.5;
 	
 	// special cases light lightning and beacon beams...	
 	#ifdef ENTITIES
-		if(entityId == ENTITY_LIGHTNING){
+		if(blissEntityId == ENTITY_LIGHTNING){
 			LIGHTNING = 1;
 			normalMat.a = 0.50;
 		}
@@ -286,23 +324,23 @@ void main() {
     /////// ----- SSS ON BLOCKS ----- ///////
 	// strong
 	if (
-		mc_Entity.x == BLOCK_SSS_STRONG || mc_Entity.x == BLOCK_SAPLING || mc_Entity.x == BLOCK_AIR_WAVING
+		blockID == BLOCK_SSS_STRONG || blockID == BLOCK_SAPLING || blockID == BLOCK_AIR_WAVING
 	) {
 		SSSAMOUNT = 1.0;
 	}
 
 	// medium
 	if (
-		mc_Entity.x == BLOCK_GROUND_WAVING || mc_Entity.x == BLOCK_GROUND_WAVING_VERTICAL
-		|| mc_Entity.x == BLOCK_GRASS_SHORT || mc_Entity.x == BLOCK_GRASS_TALL_UPPER || mc_Entity.x == BLOCK_GRASS_TALL_LOWER
+		blockID == BLOCK_GROUND_WAVING || blockID == BLOCK_GROUND_WAVING_VERTICAL
+		|| blockID == BLOCK_GRASS_SHORT || blockID == BLOCK_GRASS_TALL_UPPER || blockID == BLOCK_GRASS_TALL_LOWER
 	) {
 		SSSAMOUNT = 0.5;
 	}
 	if (
-		mc_Entity.x == BLOCK_SSS_WEAK || mc_Entity.x == BLOCK_SSS_WEAK_2 ||
-		mc_Entity.x == BLOCK_GLOW_LICHEN || mc_Entity.x == BLOCK_SNOW_LAYERS || mc_Entity.x == BLOCK_CARPET ||
-		mc_Entity.x == BLOCK_AMETHYST_BUD_MEDIUM || mc_Entity.x == BLOCK_AMETHYST_BUD_LARGE || mc_Entity.x == BLOCK_AMETHYST_CLUSTER ||
-		mc_Entity.x == BLOCK_BAMBOO || mc_Entity.x == BLOCK_SAPLING || mc_Entity.x == BLOCK_VINE
+		blockID == BLOCK_SSS_WEAK || blockID == BLOCK_SSS_WEAK_2 ||
+		blockID == BLOCK_GLOW_LICHEN || blockID == BLOCK_SNOW_LAYERS || blockID == BLOCK_CARPET ||
+		blockID == BLOCK_AMETHYST_BUD_MEDIUM || blockID == BLOCK_AMETHYST_BUD_LARGE || blockID == BLOCK_AMETHYST_CLUSTER ||
+		blockID == BLOCK_BAMBOO || blockID == BLOCK_SAPLING || blockID == BLOCK_VINE
 	) {
 		SSSAMOUNT = 0.5;
 	}
@@ -310,9 +348,9 @@ void main() {
 	// low
 	#ifdef MISC_BLOCK_SSS
 		if(
-			mc_Entity.x == BLOCK_SSS_WEIRD || mc_Entity.x == BLOCK_GRASS
+			blockID == BLOCK_SSS_WEIRD || blockID == BLOCK_GRASS
 		){
-			SSSAMOUNT = 0.5;
+			SSSAMOUNT = MISC_BLOCK_SSS_AMOUNT;
 		}
 	#endif
 
@@ -320,12 +358,12 @@ void main() {
 		#ifdef MOB_SSS
 		    /////// ----- SSS ON MOBS----- ///////
 			// strong
-			if(entityId == ENTITY_SSS_MEDIUM) SSSAMOUNT = 0.75;
+			if(blissEntityId == ENTITY_SSS_MEDIUM) SSSAMOUNT = 0.75;
 	
 			// medium
 	
 			// low
-			if(entityId == ENTITY_SSS_WEAK || entityId == ENTITY_PLAYER) SSSAMOUNT = 0.4;
+			if(blissEntityId == ENTITY_SSS_WEAK || blissEntityId == ENTITY_PLAYER) SSSAMOUNT = 0.4;
 		#endif
 	#endif
 
@@ -334,7 +372,7 @@ void main() {
 		// strong
 
 		// medium
-		if(blockEntityId == BLOCK_SSS_WEAK_3) SSSAMOUNT = 0.4;
+		if(blissBlockEntityId == BLOCK_SSS_WEAK_3) SSSAMOUNT = 0.4;
 
 		// low
 
@@ -349,13 +387,13 @@ void main() {
 		if(	
 			(
 				// these wave off of the ground. the area connected to the ground does not wave.
-				(InterpolateFromBase && (mc_Entity.x == BLOCK_GRASS_TALL_LOWER || mc_Entity.x == BLOCK_GROUND_WAVING || mc_Entity.x == BLOCK_GRASS_SHORT || mc_Entity.x == BLOCK_SAPLING || mc_Entity.x == BLOCK_GROUND_WAVING_VERTICAL)) 
+				(InterpolateFromBase && (blockID == BLOCK_GRASS_TALL_LOWER || blockID == BLOCK_GROUND_WAVING || blockID == BLOCK_GRASS_SHORT || blockID == BLOCK_SAPLING || blockID == BLOCK_GROUND_WAVING_VERTICAL)) 
 
 				// these wave off of the ceiling. the area connected to the ceiling does not wave.
-				|| (!InterpolateFromBase && (mc_Entity.x == 17))
+				|| (!InterpolateFromBase && (blockID == 17))
 
 				// these wave off of the air. they wave uniformly
-				|| (mc_Entity.x == BLOCK_GRASS_TALL_UPPER || mc_Entity.x == BLOCK_AIR_WAVING)
+				|| (blockID == BLOCK_GRASS_TALL_UPPER || blockID == BLOCK_AIR_WAVING)
 
 			) && abs(position.z) < 64.0
 		){
@@ -366,7 +404,7 @@ void main() {
 
 
 			// apply displacement for waving leaf blocks specifically, overwriting the other waving mode. these wave off of the air. they wave uniformly
-			if(mc_Entity.x == BLOCK_AIR_WAVING) worldpos = UnalteredWorldpos + calcMoveLeaves(worldpos + cameraPosition, 0.0040, 0.0064, 0.0043, 0.0035, 0.0037, 0.0041, vec3(1.0,0.2,1.0), vec3(0.5,0.1,0.5))*lmtexcoord.w;
+			if(blockID == BLOCK_AIR_WAVING) worldpos = UnalteredWorldpos + calcMoveLeaves(worldpos + cameraPosition, 0.0040, 0.0064, 0.0043, 0.0035, 0.0037, 0.0041, vec3(1.0,0.2,1.0), vec3(0.5,0.1,0.5))*lmtexcoord.w;
 		
 		}
 	#endif
@@ -385,7 +423,7 @@ void main() {
 #endif
 
 	#if defined Seasons && defined WORLD && !defined ENTITIES && !defined BLOCKENTITIES && !defined HAND
-		YearCycleColor(color.rgb, gl_Color.rgb, mc_Entity.x == BLOCK_AIR_WAVING, true);
+		YearCycleColor(vColor.rgb, gl_Color.rgb, blockID == BLOCK_AIR_WAVING, true);
 	#endif
 
 	#ifdef TAA_UPSCALING

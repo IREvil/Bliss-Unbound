@@ -1,11 +1,24 @@
-option.SHADER_VERSION_LABEL = Bliss In-Dev Version
-    prefix.SHADER_VERSION_LABEL = COMMIT #
+option.SHADER_VERSION_LABEL = Bliss Unbound
+    prefix.SHADER_VERSION_LABEL = Bliss base #
 
-# if you're here to translate, this is a joke, these don't do what they say
-profile.QUALITY=Quality
-profile.PERFORMANCE=Performance
+# Presets, generated from presets/*.txt by tools/presets.py
+profile.BLISS_DEFAULT = Bliss Default
+profile.MEDIUM = Medium
+profile.HIGH = High
+profile.ULTRA = Ultra
+profile.comment = Quality preset. Sun and moon brightness and the mood are kept when switching presets.
 
-screen.Misc_Settings = §cDebugging§r/Experimental Settings
+option.TONEMAP_MOOD = Mood
+option.TONEMAP_MOOD.comment = Overall look of the tonemapper. Default uses AgX, Natural uses the gentler AgX Minimal, Vibrant uses ACES. Custom uses the Tonemap setting under Post Processing.
+value.TONEMAP_MOOD.0 = Default
+value.TONEMAP_MOOD.1 = Natural
+value.TONEMAP_MOOD.2 = Vibrant
+value.TONEMAP_MOOD.3 = Custom
+
+screen.DEBUG = §cDebug
+screen.DEBUG.comment = Debug views and ACT diagnostics. Leave everything here at its default for normal play.
+
+screen.Misc_Settings = Experimental Settings
 screen.Sun_and_Moon_Colors = Sun/Moon Colors
 option.sunPathRotation = Sun Angle
 suffix.sunPathRotation = °
@@ -597,7 +610,7 @@ option.SKY_GROUND_R = Ground R
 option.SKY_GROUND_G = Ground G
 option.SKY_GROUND_B = Ground B
 
-screen.Misc_Settings.comment = Random settings for DEBUGGING or other fun stuff.
+screen.Misc_Settings.comment = Experimental and fun settings. Debug views moved to ACT / World-Space Reflections > Debug.
 screen.Sun_and_Moon_Colors.comment = Configure the color of the sun or moon.
 option.sunPathRotation.comment = Configure the angle of the sun or moon
 option.sun_illuminance.comment = Configure the brightness of the sun
@@ -828,4 +841,98 @@ option.TOGGLE_VL_FOG = Toggle Volumetric Fog
 option.TOGGLE_VL_FOG.comment = one big button to just turn all the fog off.
 
 option.TRANSLUCENT_COLORED_SHADOWS.comment = §bWhat is this?§r This effect allows translucent things like stained glass to color the sunlight as it passes through it. §aPERFORMANCE COST:§r medium
-option.MINIMUM_WATER_ABSORBANCE.comment = §bWhat is this?§r This controls how "clear" the water is in shallow areas. AUTO allows water to be clear outdoors, but adjust to be at a minimum value of 7 when indoors, to make it clearly visible. §dTHIS SETTING DOES NOT IMPACT UNDER-WATER VISUALS.        
+option.MINIMUM_WATER_ABSORBANCE.comment = §bWhat is this?§r This controls how "clear" the water is in shallow areas. AUTO allows water to be clear outdoors, but adjust to be at a minimum value of 7 when indoors, to make it clearly visible. §dTHIS SETTING DOES NOT IMPACT UNDER-WATER VISUALS.
+
+# IntegratedPBR+ grazing reflections
+option.IPBR_GRAZING_REFLECTIONS = Grazing Reflections
+option.IPBR_GRAZING_SMOOTHNESS = Grazing Smoothness
+option.IPBR_GRAZING_F0 = Grazing Reflection Strength
+
+# ACT / World-Space Reflections
+screen.ACT = ACT / World-Space Reflections
+screen.ACT.comment = Complementary's Advanced Color Tracing and ray-traced world-space reflections. This replaces Bliss' own light path (LPV) and screen-space reflections entirely while enabled, so the two cannot run together.
+option.ACT_ENABLED = Enable ACT
+option.ACT_ENABLED.comment = Switch the whole lighting and reflection path over to Complementary's voxel-based system. Turns Bliss' LPV off. §cPERFORMANCE COST:§r high
+option.ACT_DISTANCE = ACT Distance
+option.ACT_DISTANCE.comment = How far the light and reflection volume reaches, in chunks. Larger is more expensive; the volume grows with the cube of this value.
+option.BLOCK_REFLECT_QUALITY = Block Reflections
+option.BLOCK_REFLECT_QUALITY.comment = LOW shows only the sun and moon. HIGH adds full specular reflections on blocks.
+value.BLOCK_REFLECT_QUALITY.0 = §cLOW
+value.BLOCK_REFLECT_QUALITY.3 = §aHIGH
+option.WATER_REFLECT_QUALITY = Water Reflections
+option.WATER_REFLECT_QUALITY.comment = Water only. POTATO reflects only the sky (cheapest). MEDIUM adds screen-space reflections, plus world-space ones when enabled.
+value.WATER_REFLECT_QUALITY.-1 = §cPOTATO
+value.WATER_REFLECT_QUALITY.1 = §aMEDIUM
+option.GLASS_REFLECT_QUALITY = Glass Reflections
+option.GLASS_REFLECT_QUALITY.comment = Glass, ice and other translucents. POTATO reflects only the sky (cheapest). MEDIUM adds screen-space reflections, plus world-space ones when enabled.
+value.GLASS_REFLECT_QUALITY.-1 = §cPOTATO
+value.GLASS_REFLECT_QUALITY.1 = §aMEDIUM
+option.WORLD_SPACE_REFLECTIONS = World-Space Reflections
+option.WORLD_SPACE_REFLECTIONS.comment = Requires ACT. Block, glass and water reflections are ray-traced through a voxel copy of the world, so off-screen geometry still reflects. Entities and the player are not in the voxel copy yet. §cPERFORMANCE COST:§r high
+option.WORLD_SPACE_REF_MODE = Reflection Mode
+option.WORLD_SPACE_REF_MODE.comment = World-Space First traces the voxel copy and uses screen-space only where it misses (no entities in reflections yet). Screen-Space First keeps screen-space reflections and fills their misses from the voxel copy.
+value.WORLD_SPACE_REF_MODE.1 = World-Space First
+value.WORLD_SPACE_REF_MODE.2 = Screen-Space First
+option.WORLD_SPACE_PLAYER_REF = Reflect the Player
+option.WORLD_SPACE_PLAYER_REF.comment = Let your own player model appear in world-space reflections (water, glass, polished blocks), including in first person. Needs World-Space Reflections. Costs a little performance.
+value.WORLD_SPACE_PLAYER_REF.-1 = Off
+value.WORLD_SPACE_PLAYER_REF.1 = On
+option.WSR_DAY_STRENGTH = Reflection Brightness (Day)
+option.WSR_DAY_STRENGTH.comment = Brightness of block reflections during the day, in percent. The Nether and the End use this value too.
+suffix.WSR_DAY_STRENGTH = %
+option.WSR_NIGHT_STRENGTH = Reflection Brightness (Night)
+option.WSR_NIGHT_STRENGTH.comment = Brightness of block reflections at night, in percent. Bliss nights are darker than Complementary's, so this defaults above 100.
+suffix.WSR_NIGHT_STRENGTH = %
+option.TINTED_GLASS_CLARITY = Tinted Glass Clarity
+option.TINTED_GLASS_CLARITY.comment = How much of tinted glass' opacity is removed, in percent. Higher is easier to see through.
+suffix.TINTED_GLASS_CLARITY = %
+option.GLOBAL_GOD_RAYS = Global God Rays
+option.GLOBAL_GOD_RAYS.comment = Show sun shafts in clear air too, not only inside fog. Uses the volumetric fog's shadow samples, so it costs almost nothing extra.
+option.GOD_RAYS_STRENGTH = God Ray Strength
+suffix.GOD_RAYS_STRENGTH = %
+screen.the_end_orb = The End Orb
+option.THE_ORB = The Orb
+option.THE_ORB.comment = Replace the End's central light with a glowing orb fixed above the main island.
+option.ORB_ALWAYS_VISIBLE = Orb Always Visible
+option.ORB_ALWAYS_VISIBLE.comment = Draw the orb at any distance. Off, it only shows where the End fog reaches it.
+option.ORB_HEIGHT = Orb Height
+option.ORB_SIZE = Orb Size
+option.ORB_ColMult = Orb Brightness
+option.ORB_R = Orb Red
+option.ORB_G = Orb Green
+option.ORB_B = Orb Blue
+option.COLORED_LIGHT_STRENGTH = Colored Light Strength
+option.IPBR_EMISSION_STRENGTH = IPBR Emission Strength
+option.IPBR_REFLECTION_THRESHOLD = IPBR Reflection Threshold
+option.IPBR_REFLECTION_THRESHOLD.comment = IntegratedPBR+ surfaces whose reflection strength is below this skip reflections entirely. Higher is faster but drops the faint sheen on matte blocks; 0.01 matches Complementary.
+option.NORMAL_AMBIENT_RELIEF = Normal Relief in Ambient Light
+option.NORMAL_AMBIENT_RELIEF.comment = Lets normal detail (generated or resource-pack normals) shade sky and block light, so the relief stays visible at night and in shade. 0 = off.
+option.MISC_BLOCK_SSS_AMOUNT = Misc Block SSS Amount
+option.MISC_BLOCK_SSS_AMOUNT.comment = Subsurface scattering for solid blocks such as sand and grass blocks. Bliss used 0.50, which makes whole faces glow; lower values keep the glow to thin edges.
+option.IPBR_EMISSION_STRENGTH.comment = Scales how strongly IntegratedPBR+ emissive blocks glow in Bliss. Complementary's emission values are mapped onto Bliss' emissive curve; 15 is close to Complementary.
+option.COLORED_LIGHT_STRENGTH.comment = Brightness of light from the ACT volume. Tune this against exposure; it is the factor that has to sit correctly between Complementary's lighting equation and Bliss'.
+option.COLORED_LIGHT_SATURATION = Colored Light Saturation
+option.COLORED_LIGHT_SATURATION.comment = Saturation of light emitted by coloured sources like torches, candles and portals.
+option.COLORED_LIGHT_FOG = Colored Light Fog
+option.COLORED_LIGHT_FOG.comment = Tint fog with light from coloured sources.
+option.COLORED_LIGHT_FOG_I = Colored Fog Strength
+option.ACT_FIRE_COLOR_WARMNESS = Fire Color Warmth
+option.ACT_FIRE_COLOR_WARMNESS.comment = Warmth of fire and torch light. 100 is upstream's default; lower is more neutral, higher pushes toward deep orange.
+option.COLORED_CANDLE_LIGHT = Colored Candle Light
+option.COLORED_CANDLE_LIGHT.comment = Give each candle colour its own light colour.
+option.CONNECTED_GLASS_EFFECT = Connected Glass Shadows
+option.CONNECTED_GLASS_EFFECT.comment = Treat joined glass panes as one block for lighting and shadows.
+option.PORTAL_EDGE_EFFECT = Portal Edge Effect
+option.PORTAL_EDGE_EFFECT.comment = Light the edges of nether portals.
+option.PUDDLE_VOXELIZATION = Puddle Voxelization
+option.PUDDLE_VOXELIZATION.comment = Mark puddles in the voxel volume so reflections and light treat them as wet surfaces.
+option.ACT_DEBUG_WRITE_MAT = ACT Debug: store mat
+option.ACT_DEBUG_WRITE_MAT.comment = Diagnostics. Stores the raw mat value in the voxel volume so the debug_ACT view (GUI hidden) reports what the shadow pass computes, instead of the mapped voxel id.
+option.ACT_DEBUG_SKIP_GUARD = ACT Debug: skip write guard
+option.ACT_DEBUG_SKIP_GUARD.comment = Diagnostics. Bypasses UpdateVoxelMap's early-out, to tell a rejected id apart from a write that never lands.
+option.ACT_DEBUG_FORCE = ACT Debug: force path
+option.ACT_DEBUG_FORCE.comment = Diagnostics. Enables ACT regardless of ACT_ENABLED and of Iris' custom-image flag, to tell a disabled path from a write that cannot land.
+option.ACT_DEBUG_SKIP_ELIGIBLE = ACT Debug: skip stage gate
+option.ACT_DEBUG_SKIP_ELIGIBLE.comment = Diagnostics. Bypasses the render-stage check around the voxel write.
+option.ACT_DEBUG_BREAK_SHADOW = ACT Debug: break shadow map
+option.ACT_DEBUG_BREAK_SHADOW.comment = Diagnostics. Collapses gl_Position in the shadow programs. If the shadow map visibly breaks, the program runs and the image binding is at fault; if nothing changes, the program is not executing as assumed.

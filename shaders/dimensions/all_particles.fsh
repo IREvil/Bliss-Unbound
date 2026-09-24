@@ -220,8 +220,12 @@ float ComputeShadowMap(inout vec3 directLightColor, vec3 playerPos, float maxDis
 	vec2 dcdx = dFdx(vtexcoord.st*vtexcoordam.pq)*exp2(Texture_MipMap_Bias);
 	vec2 dcdy = dFdy(vtexcoord.st*vtexcoordam.pq)*exp2(Texture_MipMap_Bias);
 	
+#ifndef diagonal3
 	#define diagonal3(m) vec3((m)[0].x, (m)[1].y, m[2].z)
+#endif
+#ifndef projMAD
 	#define  projMAD(m, v) (diagonal3(m) * (v) + (m)[3].xyz)
+#endif
 
 	const float mincoord = 1.0/4096.0;
 	const float maxcoord = 1.0-mincoord;
@@ -369,7 +373,7 @@ void main() {
 		lightmap.y = 1.0;
 	#endif
 
-	#if defined Hand_Held_lights && !defined LPV_ENABLED
+	#if defined Hand_Held_lights && !defined IS_LPV_ENABLED
 		#ifdef IS_IRIS
 			vec3 playerCamPos = eyePosition;
 		#else

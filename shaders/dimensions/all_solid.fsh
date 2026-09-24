@@ -4,10 +4,17 @@
 #include "/lib/blocks.glsl"
 #include "/lib/entities.glsl"
 #include "/lib/items.glsl"
+#include "/lib/ipbr/ipbr_settings.glsl"
 
 flat varying int NameTags;
 
 #ifdef HAND
+#undef POM
+#endif
+
+// IntegratedPBR+ owns the normal in IPBR mode and has no heightmap to trace,
+// so Bliss' parallax occlusion mapping stands down there.
+#ifdef IPBR
 #undef POM
 #endif
 
@@ -45,7 +52,7 @@ vec2 dcdy = dFdy(vtexcoord.st*vtexcoordam.pq)*exp2(Texture_MipMap_Bias);
 #include "/lib/res_params.glsl"
 varying vec4 lmtexcoord;
 
-varying vec4 color;
+varying vec4 vColor;
 
 uniform float far;
 
@@ -54,10 +61,15 @@ uniform float wetness;
 varying vec4 normalMat;
 
 
+// FlatNormals is written unconditionally by the vertex stage, so it cannot live
+// inside the MC_NORMAL_MAP guard.
+varying vec3 FlatNormals;
+
+#if defined MC_NORMAL_MAP || defined IPBR_NEEDS_TANGENT
+	varying vec4 tangent;
+#endif
 #ifdef MC_NORMAL_MAP
 	uniform sampler2D normals;
-	varying vec4 tangent;
-	varying vec3 FlatNormals;
 #endif
 
 
@@ -91,6 +103,8 @@ uniform vec4 entityColor;
 // in vec3 velocity;
 
 flat varying float blockID;
+// Raw Iris block id -- Complementary's integratedPBR+ numbering.
+flat varying float irisBlockId;
 
 flat varying float SSSAMOUNT;
 flat varying float EMISSIVE;
@@ -192,8 +206,12 @@ float encodeVec2(float x,float y){
 #endif
 
 
+#ifndef diagonal3
 #define diagonal3(m) vec3((m)[0].x, (m)[1].y, m[2].z)
+#endif
+#ifndef projMAD
 #define  projMAD(m, v) (diagonal3(m) * (v) + (m)[3].xyz)
+#endif
 
 vec3 toScreenSpace(vec3 p) {
 	vec4 iProjDiag = vec4(gbufferProjectionInverse[0].x, gbufferProjectionInverse[1].y, gbufferProjectionInverse[2].zw);
@@ -311,6 +329,11 @@ void convertHandDepth(inout float depth) {
 //////////////////////////////VOID MAIN//////////////////////////////
 //////////////////////////////VOID MAIN//////////////////////////////
 
+// IntegratedPBR+ environment and helpers.  The globals must exist before the
+// helper functions that read them, and both must exist before main().
+#include "/lib/ipbr/ipbr_globals.glsl"
+#include "/lib/ipbr/ipbr_compat.glsl"
+
 #if defined HAND || defined ENTITIES || defined BLOCKENTITIES
 	/* RENDERTARGETS:1,8,15,2 */
 #else
@@ -350,7 +373,7 @@ void main() {
 
 	float torchlightmap = lmtexcoord.z;
 
-	#if defined Hand_Held_lights && !defined LPV_ENABLED
+	#if defined Hand_Held_lights && !defined IS_LPV_ENABLED
 		#ifdef IS_IRIS
 			vec3 playerCamPos = eyePosition;
 		#else
@@ -443,10 +466,27 @@ void main() {
 	////////////////////////////////	ALBEDO		////////////////////////////////
 	//////////////////////////////// 				//////////////////////////////// 
 	float textureLOD = bias();
-	vec4 Albedo = texture2D_POMSwitch(texture, adjustedTexCoord.xy, vec4(dcdx,dcdy), ifPOM, textureLOD) * color;
+
+	#ifdef IPBR
+		// Keep the raw texture sample: Complementary's grounded materials work
+		// off the texture colour before the vertex colour is applied.
+		vec4 ipbrTexSample = texture2D_POMSwitch(texture, adjustedTexCoord.xy, vec4(dcdx,dcdy), ifPOM, textureLOD);
+		vec4 Albedo = ipbrTexSample * vColor;
+	#else
+		vec4 Albedo = texture2D_POMSwitch(texture, adjustedTexCoord.xy, vec4(dcdx,dcdy), ifPOM, textureLOD) * vColor;
+	#endif
 	
 	
 	#if defined HAND
+		if (Albedo.a < 0.1) discard;
+	#endif
+
+	// -----------------------------------------------------------------------
+	//  IntegratedPBR+ material database
+	// -----------------------------------------------------------------------
+	#include "/lib/ipbr/ipbr_solid.glsl"
+
+	#if defined IPBR && (defined ENTITIES || defined HAND)
 		if (Albedo.a < 0.1) discard;
 	#endif
 
@@ -527,7 +567,7 @@ void main() {
 		}
 		else if(blockID == BLOCK_GRASS) {
 		// Special handling for grass block
-			float strength = 1.0 - color.b;
+			float strength = 1.0 - vColor.b;
 			Albedo.rgb = mix(Albedo.rgb, aerochrome_color, strength);
 		}
 		#ifdef AEROCHROME_WOOL_ENABLED
@@ -565,7 +605,9 @@ void main() {
 	////////////////////////////////	NORMAL		////////////////////////////////
 	//////////////////////////////// 				//////////////////////////////// 
 
-	#if defined WORLD && defined MC_NORMAL_MAP
+	// IntegratedPBR+ supplies its own normal (integratedPBR+ has no resource-pack
+	// normal maps; that is what the LabPBR mode of the toggle is for).
+	#if defined WORLD && defined MC_NORMAL_MAP && !defined IPBR
 		vec4 NormalTex = texture2D_POMSwitch(normals, adjustedTexCoord.xy, vec4(dcdx,dcdy), ifPOM,textureLOD).xyzw;
 		
 		#ifdef MATERIAL_AO
@@ -585,6 +627,288 @@ void main() {
 	//////////////////////////////// 				//////////////////////////////// 
 	
 	#ifdef WORLD
+		#ifdef IPBR
+			// ---------------- IntegratedPBR+ material write ----------------
+			// colortex8.r  perceptual smoothness
+			// colortex8.g  F0, so Bliss' Fresnel/reflection model reacts to
+			//              the material the same way Complementary's does
+			// colortex8.b  subsurface scattering
+			// colortex8.a  emission (Bliss raises it to Emissive_Curve, which
+			//              is the same squaring Complementary does)
+			// Reflections follow smoothnessD like upstream (0 for grass, dirt, sand); smoothnessG only shapes the highlight.
+			float ipbrSmoothness = clamp(smoothnessD, 0.0, 1.0);
+
+			// ------------------------------------------------------------------
+			// F0 mapping.
+			//
+			// Bliss gates every reflection behind `getReflectionVisibility`
+			// (lib/specular.glsl), which opens at an F0 threshold of 26/255:
+			//
+			//     float dialectrics = max(f0*255.0 - 26.0,0.0)/229.0;
+			//
+			// Below that threshold visibility is exactly zero, so this base has
+			// to clear it or the material reflects nothing at all -- which is
+			// what a 0.05 base did, and why tuning the grazing floors by a
+			// factor of four changed almost nothing: both were still under the
+			// gate, not merely weak.
+			//
+			// Complementary multiplies a fixed Fresnel by highlightMult and
+			// gives virtually every surface some reflection.  Placing the base
+			// just above the threshold reproduces that: a default material lands
+			// at 0.11, opening visibility at ~0.01 -- a faint near-mirror sheen
+			// rather than a visible gloss, and present head-on so it survives in
+			// shade.
+			//
+			// IPBR_SPECULAR_STRENGTH scales every material from here.
+			// ------------------------------------------------------------------
+			float ipbrF0 = clamp(IPBR_SPECULAR_STRENGTH_M * 0.11 * sqrt(max(highlightMult, 0.0)), 0.0, 0.99);
+
+			// Complementary tags metals and shiny-hard blocks with a coloured
+			// fresnel instead of an F0.  Bliss already has LabPBR's hardcoded
+			// metal reflectances, so translate them and let Bliss render the
+			// metal properly.
+			if      (materialMask > OSIEBCA * 1.5 && materialMask < OSIEBCA * 2.5) ipbrF0 = 234.0 / 255.0; // copper
+			else if (materialMask > OSIEBCA * 2.5 && materialMask < OSIEBCA * 3.5) ipbrF0 = 231.0 / 255.0; // gold
+			else if (materialMask > OSIEBCA * 4.5 && materialMask < OSIEBCA * 5.5) ipbrF0 = 230.0 / 255.0; // redstone -> iron
+			// OSIEBCA * 1.0 is Complementary's "Intense Fresnel": a brighter
+			// reflection tint, not a metal.  Iron, quartz, obsidian, amethyst,
+			// OSIEBCA * 1.0 is Complementary's "Intense Fresnel": iron, quartz,
+			// obsidian, amethyst, diamond, emerald, deepslate.  Upstream it
+			// replaces the Fresnel curve with `fresnelM * 0.75 + 0.25`
+			// (deferred1.glsl), i.e. a 0.25 reflectance floor even head-on.
+			// Bliss' F0 is that floor.
+			else if (materialMask > OSIEBCA * 0.5 && materialMask < OSIEBCA * 1.5) {
+				ipbrF0 = max(ipbrF0, 0.25 * IPBR_INTENSE_FRESNEL_MULT_M);
+			}
+
+			// ------------------------------------------------------------------
+			// Grazing-angle sheen, applied last so it lifts the floor for every
+			// material rather than competing with the metal and intense-fresnel
+			// cases above.  max() means it can only raise a value, never lower
+			// one, so those cases keep the reflectances they were given.
+			//
+			// Fresnel suppresses the reflection at normal incidence, so floors
+			// here read as a rough sheen that appears as the angle shallows --
+			// the Complementary behaviour -- rather than as an all-over gloss.
+			// ------------------------------------------------------------------
+			#ifdef IPBR_GRAZING_REFLECTIONS
+				ipbrSmoothness = max(ipbrSmoothness, IPBR_GRAZING_SMOOTHNESS);
+				ipbrF0 = max(ipbrF0, IPBR_GRAZING_F0);
+			#endif
+
+			if (ipbrF0 > 229.5 / 255.0) {
+				ipbrSmoothness = max(ipbrSmoothness, clamp(smoothnessG, 0.0, 1.0));
+			} else {
+				// Dielectric F0 channel = 0.45 intense-fresnel flag + 0.44 * smoothnessG; decoded in specular.glsl.
+				bool ipbrIntense = materialMask > OSIEBCA * 0.5 && materialMask < OSIEBCA * 1.5;
+				ipbrF0 = (ipbrIntense ? 0.45 : 0.0) + 0.44 * clamp(smoothnessG, 0.0, 1.0);
+			}
+
+			// ------------------------------------------------------------------
+		// TEMPORARY TEST -- specular aliasing on near-Nyquist synthetic normals.
+		//
+		// A resource-pack normal map is hand-authored and smooth.  GenerateNormals
+		// differences ADJACENT TEXELS of a 16x16 texture, which is close to the
+		// Nyquist limit that texture can express -- opposite ends of the frequency
+		// spectrum, fed into the same specular pipeline.
+		//
+		// A real normal texture has a mip chain, so local variance can be inspected
+		// and roughness widened to suppress specular aliasing.  A synthetic
+		// per-fragment normal has no mip chain and no such mechanism, so every
+		// texel-scale wobble gets full-contrast specular response.  That predicts a
+		// hard, texture-locked, angle-invariant artifact unaffected by perturbation
+		// magnitude -- and that widening the sample footprint makes it worse, which
+		// is what four-step averaging did.
+		//
+		//   mesh disappears or drops to a faint diffuse-only version -> specular
+		//        aliasing.  The fix is to widen roughness in proportion to the
+		//        synthetic normal's variance, not to keep editing the gradient.
+		//   mesh unchanged -> specular is excluded and the pattern is not a
+		//        lighting response at all, which makes item #1's contradiction
+		//        the thing to resolve.
+		// ------------------------------------------------------------------
+		// ------------------------------------------------------------------
+		// Diagnostic switch, enabled from the shaderpack options file with
+		//     GN_TEST_TINT=true
+		// Paints the albedo an unmissable colour wherever the IPBR path runs, so
+		// a capture proves at a glance that the modified shader is the one being
+		// rendered -- ruling out a stale build or a failed reload before any
+		// conclusion is drawn from the image.
+		// ------------------------------------------------------------------
+		#ifdef GN_TEST_TINT
+			Albedo.rgb = vec3(1.0, 0.0, 1.0);
+		#endif
+
+		gl_FragData[1].rg = vec2(ipbrSmoothness, ipbrF0);
+			gl_FragData[1].a = IpbrToBlissEmission(emission);
+
+			float ipbrSSS = 0.0;
+			if      (subsurfaceMode == 1) ipbrSSS = 0.75;
+			else if (subsurfaceMode == 2) ipbrSSS = 0.50;
+			else if (subsurfaceMode == 3) ipbrSSS = 0.40;
+			#if SSS_TYPE == 1 || SSS_TYPE == 2
+				ipbrSSS = max(ipbrSSS, SSSAMOUNT);
+			#endif
+			gl_FragData[1].b = ipbrSSS;
+
+			#if defined WORLD && !defined ENTITIES && !defined HAND
+				if(PORTAL > 0) gl_FragData[1].a = endPortalEmission;
+			#endif
+
+			#if DEBUG_VIEW == debug_MATERIAL_SSS
+				Albedo.rgb = vec3(0.1);
+				if(ipbrSSS > 0.0) Albedo.rgb = vec3(0.0,ipbrSSS,0.0);
+			#endif
+			#if DEBUG_VIEW == debug_MATERIAL_EMISSION
+				Albedo.rgb = vec3(0.1);
+				if(emission > 0.0) Albedo.rgb = vec3(0.0, emission, 0.0);
+				if(emission >= 1.0) Albedo.rgb = vec3(1.0,0.0,0.0);
+			#endif
+			// Verification aids for the IntegratedPBR+ port: they show what the
+			// material database resolved for this fragment.
+			#if DEBUG_VIEW == debug_MATERIAL_ID
+				// Brighter = higher Complementary material id.  Anything close
+				// to black means the block is not in the IPBR database.
+				Albedo.rgb = vec3(clamp(float(mat) / 3000.0, 0.0, 4.0));
+			#endif
+			#if DEBUG_VIEW == debug_SMOOTHNESS
+				Albedo.rgb = vec3(ipbrSmoothness);
+			#endif
+			#if DEBUG_VIEW == debug_IPBR_EMISSION
+				Albedo.rgb = vec3(clamp(emission, 0.0, 1.0));
+			#endif
+			#if DEBUG_VIEW == debug_GENERATED_NORMALS
+				// Reports what the REAL GenerateNormals computed, recorded from
+				// inside it.  The normal render is not shown here because a flat
+				// field is ambiguous -- it looks the same whether the function
+				// never ran, ran and produced (0,0), or ran and was discarded.
+				//
+				//   red   = 1 if GenerateNormals reached its final line at all
+				//   green = |normalMap.x| x 4      (0 = all four diffs thresholded away)
+				//   blue  = |normalMap.y| x 4
+				//
+				// Whole screen BLACK (red 0) means the function never completed --
+				// it is not being called, returning early, or the assignment is not
+				// reaching this scope.  Red 1 with black green/blue means GetDif is
+				// returning exactly 0 for every sample.
+				Albedo.rgb = vec3(ipbrGNDebug.w > 0.5 ? 1.0 : 0.0,
+				                  clamp(abs(ipbrGNDebug.y) * 4.0, 0.0, 1.0),
+				                  clamp(abs(ipbrGNDebug.z) * 4.0, 0.0, 1.0));
+			#endif
+			#if DEBUG_VIEW == debug_TANGENT
+				// Reports the atlas size actually resolved at runtime, which is what
+				// the generated-normal sample offset is computed from:
+				//
+				//     offsetR = 16.0 / atlasSizeM / GENERATED_NORMAL_RES
+				//
+				// so a wrong atlas size means the samples land the wrong distance
+				// apart.  That would be a fixed distance in UV space -- identical
+				// from every camera angle, unaffected by GENERATED_NORMAL_MULT and
+				// unaffected by the shape of GetDif's compression, which is exactly
+				// the behaviour observed.
+				//
+				//   red = atlasSizeM.x / 4096, green = atlasSizeM.y / 4096
+				//
+				// Flat 0.25/0.25 means textureSize() failed and the 1024 fallback is
+				// in use.  Any other flat value is the real atlas size, and
+				// offset-in-texels = 0.125 x 1024 / (that value) tells us how far
+				// off the sampling is.
+				Albedo.rgb = vec3(ipbrAtlasSizeDebug.x / 4096.0,
+				                  ipbrAtlasSizeDebug.y / 4096.0,
+				                  0.0);
+			#endif
+			#if 0
+				// Is the vertex tangent consistent across a block face?
+				//
+				// A block face is two triangles split along a diagonal.  If
+				// at_tangent differs between them -- Iris/Sodium generate it
+				// per-face rather than truly per-vertex in some versions --
+				// interpolating it rotates the tangent frame along that shared
+				// edge, which rotates the generated-normal relief axes with it
+				// and shows up as a hard diagonal seam that moves with the
+				// camera.
+				//
+				//   red/green/blue = tangent.rgb * 0.5 + 0.5
+				//   a HARD COLOUR DISCONTINUITY ALONG THE DIAGONAL means the
+				//   tangent is per-triangle inconsistent and the vertex-tangent
+				//   path is the problem
+				//   smooth colour means it is consistent and the fault is
+				//   downstream (the branch selection, or ipbrB reconstruction)
+				//
+				// A unit tangent maps every channel into 0.21-0.79.
+				Albedo.rgb = clamp(tangent.rgb * 0.5 + 0.5, 0.0, 1.0);
+			#endif
+			#if DEBUG_VIEW == debug_SPRITE_SIZE
+				// State of the final normal safety net.
+				//
+				//   red   = 1 if it replaced normalM with the geometric normal
+				//   green = |normalM|^2 before it ran  (~1 when GenerateNormals
+				//           assigned a perturbed normal)
+				//   blue  = |normalM|^2 after
+				//
+				// Red-on means the safety net is what discards generated normals.
+				// Red-off with green ~1 means normalM is valid and the loss is at
+				// `normal = normalM`.
+				Albedo.rgb = vec3(ipbrNormalDebug.x,
+				                  clamp(ipbrNormalDebug.y, 0.0, 1.0),
+				                  clamp(ipbrNormalDebug.z, 0.0, 1.0));
+			#endif
+			#if DEBUG_VIEW == debug_TEXTURE_GRADIENT
+				// An inline replication of GenerateNormals, using the SAME offset,
+				// the same sampling and the same threshold as the real path.
+				//
+				// This used to use fwidth() for the offset and implicit-LOD
+				// texture2D() for the samples.  Both were removed from the real
+				// path and ruled out as causes, but the replica was never updated,
+				// so it had been reproducing stale behaviour -- showing a mesh
+				// produced by two things that no longer exist in the code under
+				// test.  It now mirrors generatedNormals.glsl exactly:
+				//
+				//   offsetR = originalOffsetR          (no fwidth floor)
+				//   texture2DLod(..., 0.0)             (no implicit LOD)
+				//
+				//   mesh visible here -> the gradients themselves carry it, and
+				//        the cause is in this sampling
+				//   clean here       -> the gradients are fine and whatever shows
+				//        in the world comes from elsewhere
+				float ipbrThr = 0.05;
+				vec2 ipbrO = (16.0 / atlasSizeM) / float(GENERATED_NORMAL_RES);
+				float ipbrCc = length(texture2D(texture, texCoord).rgb);
+
+				float ipbrDR = ipbrCc - length(texture2D(texture, texCoord + vec2(ipbrO.x, 0.0)).rgb);
+				float ipbrDL = ipbrCc - length(texture2D(texture, texCoord - vec2(ipbrO.x, 0.0)).rgb);
+				float ipbrDU = ipbrCc - length(texture2D(texture, texCoord + vec2(0.0, ipbrO.y)).rgb);
+				float ipbrDD = ipbrCc - length(texture2D(texture, texCoord - vec2(0.0, ipbrO.y)).rgb);
+				// Same smooth compression as generatedNormals.glsl.  This replica has
+				// to track the real path exactly, or it measures the wrong thing.
+				float ipbrCl = 0.2;
+				ipbrDR = ipbrDR >= 0.0 ?  ipbrCl * (1.0 - exp(-ipbrDR / ipbrThr)) : -ipbrCl * (1.0 - exp( ipbrDR / ipbrThr));
+				ipbrDL = ipbrDL >= 0.0 ?  ipbrCl * (1.0 - exp(-ipbrDL / ipbrThr)) : -ipbrCl * (1.0 - exp( ipbrDL / ipbrThr));
+				ipbrDU = ipbrDU >= 0.0 ?  ipbrCl * (1.0 - exp(-ipbrDU / ipbrThr)) : -ipbrCl * (1.0 - exp( ipbrDU / ipbrThr));
+				ipbrDD = ipbrDD >= 0.0 ?  ipbrCl * (1.0 - exp(-ipbrDD / ipbrThr)) : -ipbrCl * (1.0 - exp( ipbrDD / ipbrThr));
+
+				vec3 ipbrNrm = vec3(0.0, 0.0, 1.0);
+				ipbrNrm.x = ipbrDR - ipbrDL;
+				ipbrNrm.y = ipbrDU - ipbrDD;
+				ipbrNrm.xy *= 2.5;
+				ipbrNrm.xy = clamp(ipbrNrm.xy, vec2(-1.0), vec2(1.0));
+
+				if (ipbrNrm.xy != vec2(0.0, 0.0)) {
+					Albedo.rgb = normalize(ipbrNrm * tbnMatrix) * 0.5 + 0.5;
+				} else {
+					Albedo.rgb = vec3(1.0, 0.0, 0.0);
+				}
+			#endif
+
+			// Debug values are written into the albedo, which the deferred pass
+			// then lights -- so without this a debug view shows the *lighting*
+			// and the value is unreadable.  Forcing near-full emission makes
+			// the result unlit; the 0.2 pre-scale cancels the 5x emissive gain.
+			#if DEBUG_VIEW == debug_MATERIAL_ID || DEBUG_VIEW == debug_SMOOTHNESS || DEBUG_VIEW == debug_IPBR_EMISSION || DEBUG_VIEW == debug_GENERATED_NORMALS || DEBUG_VIEW == debug_SPRITE_SIZE || DEBUG_VIEW == debug_TEXTURE_GRADIENT || DEBUG_VIEW == debug_TANGENT || DEBUG_VIEW == debug_MATERIAL_SSS || DEBUG_VIEW == debug_MATERIAL_EMISSION
+				Albedo.rgb *= 0.2;
+				gl_FragData[1].a = 254.0 / 255.0;
+			#endif
+		#else
 		vec4 SpecularTex = texture2D_POMSwitch(specular, adjustedTexCoord.xy, vec4(dcdx,dcdy), ifPOM,textureLOD);
 
 		// SpecularTex.r = max(SpecularTex.r, rainfall);
@@ -639,6 +963,7 @@ void main() {
 			if(EMISSIVE > 0.0) Albedo.rgb = vec3(0.0,EMISSIVE,0.0);
 			if(EMISSIVE >= 1.0) Albedo.rgb = vec3(1.0,0.0,0.0);
 		#endif
+		#endif // IPBR
 	#endif
 
 	// hit glow effect...
@@ -658,6 +983,9 @@ void main() {
 		// apply noise to lightmaps to reduce banding.
 		vec2 PackLightmaps = vec2(torchlightmap, lmtexcoord.w);
 		vec4 data1 = clamp( encode(viewToWorld(normal), PackLightmaps), 0.0, 1.0);
+
+		// encodeVec2 is 8-bit: IPBR tables brighten albedo past 1.0, which would wrap.
+		Albedo.rgb = clamp(Albedo.rgb, 0.0, 1.0);
 
 		gl_FragData[0] = vec4(encodeVec2(Albedo.x,data1.x),	encodeVec2(Albedo.y,data1.y),	encodeVec2(Albedo.z,data1.z),	encodeVec2(data1.w,Albedo.w));
 
