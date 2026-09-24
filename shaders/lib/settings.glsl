@@ -346,7 +346,7 @@ const float entityShadowDistanceMul = 0.25; // [0.01 0.02 0.03 0.04 0.05 0.10 0.
 // only the default value, and the slider spans the full range either side of it.
 #define GENERATED_NORMAL_MULT 70 // [10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 110 120 130 140 150 160 170 180 190 200 250 300 400]
 #define GENERATED_NORMAL_RES 128 // [16 32 64 80 96 112 128 144 160 176 192 208 224 240 256 320 384 448 512]
-#define COATED_TEXTURE_MULT 100 // [25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 110 120 130 140 150 160 170 180 190 200]
+#define COATED_TEXTURE_MULT 50 // [25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 110 120 130 140 150 160 170 180 190 200]
 
 // Hides armour on the main player. 0 = off, 1 = main player only, 2 = all.
 #define HIDE_ARMOR 0 // [0 1 2]
@@ -1023,7 +1023,7 @@ const vec3 aerochrome_color = mix(vec3(1.0, 0.0, 0.0), vec3(0.715, 0.303, 0.631)
 // Same choice for glass, ice and other translucents.
 #define GLASS_REFLECT_QUALITY 1 // [-1 1]
 
-// #define WORLD_SPACE_REFLECTIONS
+#define WORLD_SPACE_REFLECTIONS
 #define WORLD_SPACE_PLAYER_REF -1 // [-1 1]
 // 1 = world-space first, screen-space only where it misses. 2 = screen-space first, world-space fills misses.
 #define WORLD_SPACE_REF_MODE 2 // [1 2]
@@ -1123,7 +1123,8 @@ const vec3 aerochrome_color = mix(vec3(1.0, 0.0, 0.0), vec3(0.715, 0.303, 0.631)
         const float voxelDistance = 32.0;
     #endif
 #endif
-#define LPV_ENABLED
+// Bliss' own floodfill. ACT replaces it, so it ships off; turn ACT off to use this one instead.
+// #define LPV_ENABLED
 #define LPV_SIZE 8 // [6 7 8]
 #define LPV_SATURATION 120 // [0 5 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 105 110 115 120 125 130 135 140 145 150 155 160 165 170 175 180 185 190 195 200]
 #define LPV_TINT_SATURATION 120 // [0 5 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 105 110 115 120 125 130 135 140 145 150 155 160 165 170 175 180 185 190 195 200]

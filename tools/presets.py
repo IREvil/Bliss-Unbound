@@ -17,6 +17,8 @@ import re
 import sys
 
 INDEPENDENT = {"sun_illuminance", "moon_illuminance", "TONEMAP", "TONEMAP_MOOD"}
+# Order the presets appear in the shader options menu. Names not listed follow, alphabetically.
+PRESET_ORDER = ["Bliss Default", "Medium", "High", "Ultra"]
 DEFINE_RE = r"^(?P<indent>[ \t]*)(?P<lead>(?://[ \t]*)?)#[ \t]*define[ \t]+%s\b(?P<rest>[^\n]*)$"
 BEGIN = "# BEGIN generated profiles (tools/presets.py)"
 END = "# END generated profiles"
@@ -92,9 +94,11 @@ def main():
     check = "check" in flags
 
     presets = {}
-    for f in sorted(os.listdir(preset_dir)):
-        if f.lower().endswith(".txt"):
-            presets[f[:-4]] = parse_options(os.path.join(preset_dir, f))
+    rank = {name.lower(): i for i, name in enumerate(PRESET_ORDER)}
+    found = [f[:-4] for f in os.listdir(preset_dir) if f.lower().endswith(".txt")]
+    found.sort(key=lambda n: (rank.get(n.lower(), len(rank)), n.lower()))
+    for name in found:
+        presets[name] = parse_options(os.path.join(preset_dir, name + ".txt"))
     if default_name not in presets:
         print("default preset %r not found in %s" % (default_name, preset_dir))
         return 1

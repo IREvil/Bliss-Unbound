@@ -125,6 +125,7 @@ screen.Direct_Light = Direct Light
         
     screen.LPV = FloodFill - §cIRIS REQUIRED§r
         option.LPV_ENABLED = Enabled
+        option.LPV_ENABLED.comment = Bliss' own floodfill. ACT replaces it, so it is off by default; turn ACT off to use this one instead.
         option.LPV_SIZE = Size
             value.LPV_SIZE.6 = Small [64]
             value.LPV_SIZE.7 = Medium [128]
