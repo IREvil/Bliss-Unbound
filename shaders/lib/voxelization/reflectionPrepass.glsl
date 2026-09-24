@@ -1,6 +1,7 @@
-// Reduced-resolution reflection prepass (compute, world0/composite2_a.csh and _b.csh).
-// Compiled from dimensions/composite1.fsh with REFL_PREPASS = 1 (opaque) or 2 (water/glass). Each invocation
-// traces one low-res texel at the full-res pixel it stands for; the lighting pass upsamples the result.
+// Reduced-resolution reflection prepass (compute, world0/composite2_a/_b/_c.csh).
+// Compiled from dimensions/composite1.fsh with REFL_PREPASS = 1 (blocks), 2 (water/glass) or 3 (temporal
+// accumulation of 1). Each invocation handles one low-res texel at the full-res pixel it stands for; the
+// lighting pass upsamples the result.
 
 layout(local_size_x = 8, local_size_y = 8) in;
 
@@ -11,7 +12,7 @@ uniform vec3 moonPosition;
 uniform int framemod8;
 #include "/lib/TAA_jitter.glsl"
 
-#if REFL_PREPASS == 1
+#if REFL_PREPASS == 1 || REFL_PREPASS == 3
 	#define REFL_RES REFLECTION_RES_WORLD
 #else
 	#define REFL_RES REFLECTION_RES_MIRROR
@@ -27,6 +28,62 @@ uniform int framemod8;
 #endif
 
 void main() {
+#if REFL_PREPASS == 3 && defined REFL_PREPASS_WORLD
+	// Blend this frame's block reflections with the reprojected history, clamped to the current 3x3 neighbourhood.
+	float scale = float(REFL_RES) * 0.01;
+	vec2 screen = vec2(viewWidth, viewHeight);
+	ivec2 loSize = ivec2(ceil(screen * scale));
+	ivec2 lo = ivec2(gl_GlobalInvocationID.xy);
+	if (any(greaterThanEqual(lo, loSize))) return;
+
+	vec4 current = imageLoad(reflWorld_img, lo);
+	vec4 result = current;
+	if (current.a >= 0.0) {
+		vec4 boxMin = current;
+		vec4 boxMax = current;
+		for (int i = 0; i < 9; i++) {
+			vec4 v = imageLoad(reflWorld_img, clamp(lo + ivec2(i % 3, i / 3) - 1, ivec2(0), loSize - 1));
+			if (v.a < 0.0) continue;
+			boxMin = min(boxMin, v);
+			boxMax = max(boxMax, v);
+		}
+
+		ivec2 px = min(ivec2((vec2(lo) + 0.5) / scale), ivec2(screen) - 1);
+		#ifdef TAA
+			TAA_Offset = offsets[framemod8];
+		#else
+			TAA_Offset = vec2(0.0);
+		#endif
+		vec2 texcoord = (vec2(px) + 0.5) * texelSize;
+		vec3 viewPos = toScreenSpace(vec3(texcoord / RENDER_SCALE - TAA_Offset * texelSize * 0.5, texelFetch2D(depthtex1, px, 0).x));
+		vec3 prevPos = mat3(gbufferModelViewInverse) * viewPos + gbufferModelViewInverse[3].xyz + (cameraPosition - previousCameraPosition);
+		prevPos = mat3(gbufferPreviousModelView) * prevPos + gbufferPreviousModelView[3].xyz;
+		vec2 prevUV = projMAD(gbufferPreviousProjection, prevPos).xy / -prevPos.z * 0.5 + 0.5;
+
+		if (all(greaterThan(prevUV, vec2(0.0))) && all(lessThan(prevUV, vec2(1.0)))) {
+			vec2 hlo = prevUV * screen * scale - 0.5;
+			ivec2 h0 = ivec2(floor(hlo));
+			vec2 f = hlo - vec2(h0);
+			vec4 history = vec4(0.0);
+			float historyWeight = 0.0;
+			for (int i = 0; i < 4; i++) {
+				ivec2 o = ivec2(i & 1, i >> 1);
+				ivec2 c = clamp(h0 + o, ivec2(0), loSize - 1);
+				vec4 v = framemod2 == 0 ? imageLoad(reflWorldAccB_img, c) : imageLoad(reflWorldAccA_img, c);
+				if (v.a < 0.0) continue;
+				vec2 b = mix(1.0 - f, f, vec2(o));
+				history += v * b.x * b.y;
+				historyWeight += b.x * b.y;
+			}
+			if (historyWeight > 1e-3) {
+				history = clamp(history / historyWeight, boxMin, boxMax);
+				result = mix(history, current, 0.12);
+			}
+		}
+	}
+	if (framemod2 == 0) imageStore(reflWorldAccA_img, lo, result);
+	else imageStore(reflWorldAccB_img, lo, result);
+#endif
 #if (REFL_PREPASS == 1 && defined REFL_PREPASS_WORLD) || (REFL_PREPASS == 2 && defined REFL_PREPASS_MIRROR)
 	float scale = float(REFL_RES) * 0.01;
 	vec2 screen = vec2(viewWidth, viewHeight);

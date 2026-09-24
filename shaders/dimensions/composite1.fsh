@@ -248,8 +248,14 @@ float convertHandDepth_2(in float depth, bool hand) {
 		layout(rgba16f) uniform writeonly image2D reflWorld_img;
 	#elif REFL_PREPASS == 2
 		layout(rgba16f) uniform writeonly image2D reflMirror_img;
-	#else
+	#elif REFL_PREPASS == 3
 		layout(rgba16f) uniform readonly image2D reflWorld_img;
+		// Accumulated block reflections, ping-ponged by framemod2.
+		layout(rgba16f) uniform image2D reflWorldAccA_img;
+		layout(rgba16f) uniform image2D reflWorldAccB_img;
+	#else
+		layout(rgba16f) uniform readonly image2D reflWorldAccA_img;
+		layout(rgba16f) uniform readonly image2D reflWorldAccB_img;
 		#ifdef REFL_PREPASS_MIRROR
 			layout(rgba16f) uniform readonly image2D reflMirror_img;
 		#endif
@@ -854,7 +860,7 @@ void applyPuddles(
 		#ifdef REFL_PREPASS_MIRROR
 			if (which == 1) return imageLoad(reflMirror_img, c);
 		#endif
-		return imageLoad(reflWorld_img, c);
+		return framemod2 == 0 ? imageLoad(reflWorldAccA_img, c) : imageLoad(reflWorldAccB_img, c);
 	}
 
 	// Depth-aware upsample of a prepass image traced at `scale`; a < 0 when no sample lies on this surface.
@@ -865,7 +871,7 @@ void applyPuddles(
 		ivec2 loMax = ivec2(ceil(screen * scale)) - 1;
 		vec2 lo = gl_FragCoord.xy * scale - 0.5;
 		ivec2 lo0 = ivec2(floor(lo));
-		float radius = 1.0 + blur;
+		float radius = 1.0 + blur * 0.5;
 		float refL = ld(refDepth);
 
 		vec4 sum = vec4(0.0);
