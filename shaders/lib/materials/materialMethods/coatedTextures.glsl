@@ -22,7 +22,9 @@ void CoatTextures(inout vec3 color, float noiseFactor, vec3 playerPos, bool doTi
         noiseCoord += 0.84 * (floorWorldPos.xz + floorWorldPos.y);
     }
 
-    float noiseTexture = texture2DLod(noisetex, noiseCoord, 0.0).r;
+    // Complementary's noisetex is white noise; Bliss' noisetex is smooth at this scale, so hash the cell instead.
+    vec2 noiseCell = mod(floor(noiseCoord * packSizeNT * 3.0 + 0.5), 4096.0);
+    float noiseTexture = fract(sin(dot(noiseCell, vec2(12.9898, 78.233))) * 43758.5453);
     noiseTexture = noiseTexture + 0.6;
     float colorBrightness = dot(color, color) * 0.3;
     #define COATED_TEXTURE_MULT_M COATED_TEXTURE_MULT * 0.0027

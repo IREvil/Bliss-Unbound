@@ -509,17 +509,14 @@ vec3 specularReflections(
 			#if DEFERRED_SSR_QUALITY > 0 || FORWARD_SSR_QUALITY > 0
 				// Opaque surfaces always go WSR-first like upstream; mirrors (forward: glass, water, ice) follow the mode.
 				#ifdef FORWARD_SPECULAR
-					bool mirrorSkyOnly = isWater ? WATER_REFLECT_QUALITY < 0 : GLASS_REFLECT_QUALITY < 0; // POTATO: sky only
+					bool mirrorNoWSR = isWater ? WATER_REFLECT_QUALITY < 0 : GLASS_REFLECT_QUALITY < 0; // POTATO: screen-space only
 				#else
-					const bool mirrorSkyOnly = false;
+					const bool mirrorNoWSR = false;
 				#endif
-				#if defined FORWARD_SPECULAR && WATER_REFLECT_QUALITY < 0 && GLASS_REFLECT_QUALITY < 0
-					vec4 enviornmentReflection = vec4(0.0);
-				#elif defined INCLUDE_BLISS_WSR && (WORLD_SPACE_REF_MODE == 1 || !defined FORWARD_SPECULAR)
+				#if defined INCLUDE_BLISS_WSR && (WORLD_SPACE_REF_MODE == 1 || !defined FORWARD_SPECULAR)
 					vec4 enviornmentReflection = vec4(0.0);
 					wsrHitDist = -2.0;
-					if (!mirrorSkyOnly) {
-					if (!isHand) {
+					if (!isHand && !mirrorNoWSR) {
 						vec3 wsrPlayerPos = mat3(gbufferModelViewInverse) * viewPos + gbufferModelViewInverse[3].xyz;
 						enviornmentReflection = BlissWSR(wsrPlayerPos, normal, normalize(reflectedVector_L));
 					}
@@ -546,14 +543,11 @@ vec3 specularReflections(
 					#if DEBUG_VIEW == debug_WSR
 						if (!isHand) enviornmentReflection = vec4(wsrHit ? vec3(0.0, 10.0, 0.0) : ssrUsable ? vec3(0.0, 0.0, 10.0) : vec3(10.0, 0.0, 0.0), 1.0);
 					#endif
-					}
 				#else
-				vec4 enviornmentReflection = vec4(0.0);
-				if (!mirrorSkyOnly) {
-				enviornmentReflection = screenSpaceReflections(mat3(gbufferModelView) * reflectedVector_L, viewPos, noise.z, isHand, roughness, backgroundReflectMask);
+				vec4 enviornmentReflection = screenSpaceReflections(mat3(gbufferModelView) * reflectedVector_L, viewPos, noise.z, isHand, roughness, backgroundReflectMask);
 
 				#if defined INCLUDE_BLISS_WSR
-					if (enviornmentReflection.a < 0.999 && !isHand) {
+					if (enviornmentReflection.a < 0.999 && !isHand && !mirrorNoWSR) {
 						vec3 wsrPlayerPos = mat3(gbufferModelViewInverse) * viewPos + gbufferModelViewInverse[3].xyz;
 						vec4 wsr = BlissWSR(wsrPlayerPos, normal, normalize(reflectedVector_L));
 						enviornmentReflection.rgb = mix(wsr.rgb, enviornmentReflection.rgb, enviornmentReflection.a);
@@ -565,14 +559,13 @@ vec3 specularReflections(
 				#endif
 				#if defined INCLUDE_PLAYER_REF && defined WSR_DEFER_FORWARD && defined FORWARD_SPECULAR
 					// SSR cannot see the first-person player; it wins over whatever SSR found behind it.
-					if (!isHand) {
+					if (!isHand && !mirrorNoWSR) {
 						vec3 prPlayerPos = mat3(gbufferModelViewInverse) * viewPos + gbufferModelViewInverse[3].xyz + 0.04 * normal;
 						float prLimit = enviornmentReflection.a > 0.0 && ssrHitDist > 0.0 ? ssrHitDist : 999999.0;
 						vec4 playerRef = BlissPlayerRef(prPlayerPos, normalize(reflectedVector_L), prLimit, wsrSunColor, wsrAmbientColor, wsrSunDir);
 						if (playerRef.a > 0.0) enviornmentReflection = playerRef;
 					}
 				#endif
-				}
 				#endif
 				// darkening for metals.
 				vec3 DarkenedDiffuseLighting = isMetal ? diffuseLighting * (1.0-enviornmentReflection.a) * (1.0-lightmap) : diffuseLighting;
@@ -598,7 +591,7 @@ vec3 specularReflections(
 				specularReflections = mix(DarkenedDiffuseLighting, backgroundReflection, backgroundReflectMask);
 			#endif
 			#if defined WSR_DEFER_FORWARD && defined FORWARD_SPECULAR && (DEFERRED_SSR_QUALITY > 0 || FORWARD_SSR_QUALITY > 0)
-				if (!isHand && !mirrorSkyOnly) {
+				if (!isHand && !mirrorNoWSR) {
 					wsrDeferBase = specularReflections;
 					wsrDeferWeight = dot(F0, vec3(1.0 / 3.0)) * (1.0 - enviornmentReflection.a) * (1.0 - reflectionVisibilty);
 					wsrDeferDir = normalize(reflectedVector_L);
