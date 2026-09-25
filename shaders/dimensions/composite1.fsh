@@ -260,13 +260,39 @@ float convertHandDepth_2(in float depth, bool hand) {
 	#if defined WSR_DEFER_RESOLVE && REFLECTION_RES_MIRROR < 100
 		#define REFL_PREPASS_MIRROR
 	#endif
+	// The roughness blur of the reduced-resolution reflection (world0/composite2_d/_e.csh). A rough surface reflects
+	// a cone, not a ray, and averaging the reduced-resolution texels around the pixel is the only way to gather
+	// enough of that cone cheaply: the passes run on the reduced grid, so one tap costs a fraction of a traced ray.
+	// The width is given in screen pixels and converted to reduced-resolution texels, so the blur looks the same at
+	// every resolution setting.
+	#if defined REFL_PREPASS_WORLD && REFLECTION_BLUR > 0
+		#define REFL_BLUR_AVAILABLE
+		#if REFLECTION_BLUR == 25
+			#define REFL_BLUR_PX 12.0
+		#elif REFLECTION_BLUR == 50
+			#define REFL_BLUR_PX 32.0
+		#elif REFLECTION_BLUR == 75
+			#define REFL_BLUR_PX 64.0
+		#else
+			#define REFL_BLUR_PX 128.0
+		#endif
+	#endif
 	#if REFL_PREPASS == 1
 		layout(rgba16f) uniform writeonly image2D reflWorld_img;
 	#elif REFL_PREPASS == 2
 		layout(rgba16f) uniform writeonly image2D reflMirror_img;
+	#elif REFL_PREPASS == 4
+		layout(rgba16f) uniform readonly image2D reflWorld_img;
+		layout(rgba16f) uniform writeonly image2D reflWorldBlurTmp_img;
+	#elif REFL_PREPASS == 5
+		layout(rgba16f) uniform readonly image2D reflWorldBlurTmp_img;
+		layout(rgba16f) uniform writeonly image2D reflWorldBlur_img;
 	#else
 		#ifdef REFL_PREPASS_WORLD
 			layout(rgba16f) uniform readonly image2D reflWorld_img;
+		#endif
+		#ifdef REFL_BLUR_AVAILABLE
+			layout(rgba16f) uniform readonly image2D reflWorldBlur_img;
 		#endif
 		#ifdef REFL_PREPASS_MIRROR
 			layout(rgba16f) uniform readonly image2D reflMirror_img;
@@ -872,6 +898,9 @@ void applyPuddles(
 		#ifdef REFL_PREPASS_MIRROR
 			if (which == 1) return imageLoad(reflMirror_img, c);
 		#endif
+		#ifdef REFL_BLUR_AVAILABLE
+			if (which == 2) return imageLoad(reflWorldBlur_img, c);
+		#endif
 		#ifdef REFL_PREPASS_WORLD
 			return imageLoad(reflWorld_img, c);
 		#else
@@ -884,15 +913,12 @@ void applyPuddles(
 	// surface takes the whole grid and so sees a mixture of what its reflection cone really covers instead of a
 	// mirror image of one point. The weight falls off with distance, so the average stays anchored on the exact
 	// ray's hit, and taps whose depth is not this surface are skipped, so no blur can cross a silhouette.
+	// which: 0 = the traced block reflection, 1 = water/glass, 2 = the blurred block reflection.
 	vec4 ReflUpsample(int which, float scale, sampler2D depthTex, float refDepth, float roughness, vec3 refDir) {
-		#if defined REFL_PREPASS_MIRROR
-			// The mirror hand-off records a ray, not a roughness, so it keeps the small fixed 2 x 2 it always had.
-			int side = which == 1 ? 2 : REFL_BLUR_SIDE;
-			float sigma = which == 1 ? 1.5 : max(clamp(roughness, 0.0, 1.0) * float(REFL_BLUR_SIDE - 1) * 0.5, 1e-3);
-		#else
-			const int side = REFL_BLUR_SIDE;
-			float sigma = max(clamp(roughness, 0.0, 1.0) * float(REFL_BLUR_SIDE - 1) * 0.5, 1e-3);
-		#endif
+		// 1 keeps the small fixed 2 x 2 water/glass always had (it carries a ray, not a roughness); 2 reads an image
+		// that a wide blur has already averaged, so it only needs enough taps to interpolate it.
+		int side = (which == 1 || which == 2) ? 2 : REFL_BLUR_SIDE;
+		float sigma = which == 1 ? 1.5 : which == 2 ? 0.6 : max(clamp(roughness, 0.0, 1.0) * float(REFL_BLUR_SIDE - 1) * 0.5, 1e-3);
 		float sigma2 = sigma * sigma;
 		vec2 screen = vec2(viewWidth, viewHeight);
 		ivec2 loMax = ivec2(ceil(screen * scale)) - 1;
@@ -1576,8 +1602,24 @@ void main() {
 			// Terrain seen through water or glass already gets that surface's own reflection; tracing its own stacked a second SSR/WSR per pixel (upstream skips it too).
 			specBehindTranslucent = z0 < z && !hand && texelFetch2D(colortex2, ivec2(gl_FragCoord.xy), 0).a > 0.0;
 			#ifdef REFL_PREPASS_WORLD
-				reflWorldFetched = ReflUpsample(0, float(REFLECTION_RES_WORLD) * 0.01, depthtex1, texelFetch2D(depthtex1, ivec2(gl_FragCoord.xy), 0).x,
-					clamp((1.0 - SpecularTex.r) * 2.0, 0.0, 1.0), vec3(0.0));
+				// A reduced-resolution trace carries position but not roughness: one ray per reduced texel cannot
+				// spread over a cone the way one ray per screen pixel does. Rough surfaces therefore read the
+				// blurred copy of the same buffer, which is the same rays averaged over the cone they really see.
+				float reflRough = clamp((1.0 - SpecularTex.r) * 2.0, 0.0, 1.0);
+				float reflScale = float(REFLECTION_RES_WORLD) * 0.01;
+				#ifdef REFL_BLUR_AVAILABLE
+					// Mirrors keep the trace (their cone is a ray); a polished surface gets a little of the blur as a
+					// broad halo, and anything genuinely rough gets all of it.
+					float reflBlurMix = smoothstep(0.15, 0.6, reflRough);
+					if (reflBlurMix >= 0.999) {
+						reflWorldFetched = ReflUpsample(2, reflScale, depthtex1, z, reflRough, vec3(0.0));
+					} else {
+						reflWorldFetched = mix(ReflUpsample(0, reflScale, depthtex1, z, reflRough, vec3(0.0)),
+							ReflUpsample(2, reflScale, depthtex1, z, reflRough, vec3(0.0)), reflBlurMix);
+					}
+				#else
+					reflWorldFetched = ReflUpsample(0, reflScale, depthtex1, z, reflRough, vec3(0.0));
+				#endif
 				reflWorldFetched.a = max(reflWorldFetched.a, 0.0);
 			#endif
 			FINAL_COLOR = specularReflections(viewPos, feetPlayerPos_normalized, WsunVec, specularNoises, specularNormal, SpecularTex.r, SpecularTex.g, albedo, FINAL_COLOR, DirectLightColor*shadowColor, lightmap.y, hand, flashLightSpecularData);

@@ -1033,10 +1033,11 @@ const vec3 aerochrome_color = mix(vec3(1.0, 0.0, 0.0), vec3(0.715, 0.303, 0.631)
 // upsample it, so the lighting pass traces inline instead -- cheaper, and identical to the option being off.
 #define REFLECTION_RES_WORLD 25 // [25 50 75 100]
 #define REFLECTION_RES_MIRROR 50 // [25 50 75 100]
-// How much of the reduced-resolution reflection a fully rough surface averages. The upsample gathers a NxN grid of
-// taps around the pixel and weights them by distance, and the surface's own roughness sets how far that reaches: a
-// mirror keeps one tap and costs nothing, a rough surface takes the whole grid and so sees a mixture of its
-// surroundings instead of a mirror image. Cost scales with the setting.
+// How far a rough surface spreads its reflection, in screen pixels. A reduced-resolution trace holds one ray per
+// reduced texel, so it cannot cover the cone a rough surface really sees; this blurs that buffer over the cone's
+// footprint on the reduced grid (two extra compute passes) and blends it in as roughness rises, so mirrors stay
+// sharp and rough surfaces stop reading as mirrors. The width is converted to reduced texels per pass, so it looks
+// the same at every resolution setting. 0 turns the passes off and keeps every reflection on its exact ray.
 #define REFLECTION_BLUR 50 // [0 25 50 75 100]
 // Off traces all reflections at full resolution inside the lighting pass (the resolution sliders then do nothing).
 #define REFLECTION_PREPASS

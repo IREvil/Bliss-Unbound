@@ -1,7 +1,7 @@
-// Reduced-resolution reflection prepass (compute, world0/composite2_a/_b/_c.csh).
-// Compiled from dimensions/composite1.fsh with REFL_PREPASS = 1 (blocks), 2 (water/glass) or 3 (temporal
-// accumulation of 1). Each invocation handles one low-res texel at the full-res pixel it stands for; the
-// lighting pass upsamples the result.
+// Reduced-resolution reflection prepass (compute, world0/composite2_a/_b/_d/_e.csh).
+// Compiled from dimensions/composite1.fsh with REFL_PREPASS = 1 (blocks), 2 (water/glass),
+// 4 (horizontal blur of 1) or 5 (vertical blur of 4). Each invocation handles one low-res texel at the full-res
+// pixel it stands for; the lighting pass upsamples the result.
 
 layout(local_size_x = 8, local_size_y = 8) in;
 
@@ -12,13 +12,15 @@ uniform vec3 moonPosition;
 uniform int framemod8;
 #include "/lib/TAA_jitter.glsl"
 
-#if REFL_PREPASS == 1
-	#define REFL_RES REFLECTION_RES_WORLD
-#else
+#if REFL_PREPASS == 2
 	#define REFL_RES REFLECTION_RES_MIRROR
+#else
+	// Passes 4 and 5 blur pass 1's buffer, so they follow the world resolution.
+	#define REFL_RES REFLECTION_RES_WORLD
 #endif
-#if (REFL_PREPASS == 1 && !defined REFL_PREPASS_WORLD) || (REFL_PREPASS == 2 && !defined REFL_PREPASS_MIRROR)
-	// A resolution of 100% needs no prepass: the lighting pass traces inline there. Dispatch one group and return.
+#if (REFL_PREPASS == 1 && !defined REFL_PREPASS_WORLD) || (REFL_PREPASS == 2 && !defined REFL_PREPASS_MIRROR) || ((REFL_PREPASS == 4 || REFL_PREPASS == 5) && !defined REFL_BLUR_AVAILABLE)
+	// A resolution of 100% needs no prepass, and the blur is off: the lighting pass traces inline there. Dispatch
+	// one group and return.
 	const vec2 workGroupsRender = vec2(0.015625, 0.015625);
 #elif REFL_RES == 25
 	const vec2 workGroupsRender = vec2(0.25, 0.25);
@@ -120,6 +122,51 @@ void main() {
 			result.a = max(result.a, 0.0);
 		}
 		imageStore(reflMirror_img, lo, result);
+	#endif
+#endif
+#if (REFL_PREPASS == 4 || REFL_PREPASS == 5) && defined REFL_BLUR_AVAILABLE
+	// A wide blur of pass 1's buffer: the surface's roughness spreads its reflection over a cone that one ray per
+	// reduced texel cannot cover, and this is where the cone's samples come from. Two triangular passes make a
+	// smooth kernel, the taps are one reduced texel apart so the average is dense (a sparse one would sparkle),
+	// and taps whose depth is not this surface are dropped, which both keeps the blur on the reflecting plane and
+	// stops it dragging a reflection across a silhouette.
+	float scale = float(REFLECTION_RES_WORLD) * 0.01;
+	vec2 screen = vec2(viewWidth, viewHeight);
+	ivec2 lo = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 loMax = ivec2(ceil(screen * scale)) - 1;
+	if (any(greaterThan(lo, loMax))) return;
+
+	// Width in reduced texels for this resolution, capped so the two passes stay bounded in cost.
+	int w = clamp(int(round(REFL_BLUR_PX * scale)), 1, 24);
+	ivec2 px = min(ivec2((vec2(lo) + 0.5) / scale), ivec2(screen) - 1);
+	float refL = ld(texelFetch2D(depthtex1, px, 0).x);
+
+	vec4 sum = vec4(0.0);
+	float weightSum = 0.0;
+	for (int i = -24; i <= 24; i++) {
+		if (i < -w || i > w) continue;
+		#if REFL_PREPASS == 4
+			ivec2 c = clamp(ivec2(lo.x + i, lo.y), ivec2(0), loMax);
+		#else
+			ivec2 c = clamp(ivec2(lo.x, lo.y + i), ivec2(0), loMax);
+		#endif
+		ivec2 rep = min(ivec2((vec2(c) + 0.5) / scale), ivec2(screen) - 1);
+		if (abs(ld(texelFetch2D(depthtex1, rep, 0).x) - refL) > refL * 0.05 + 1e-4) continue;
+		#if REFL_PREPASS == 4
+			vec4 v = imageLoad(reflWorld_img, c);
+		#else
+			vec4 v = imageLoad(reflWorldBlurTmp_img, c);
+		#endif
+		if (v.a < 0.0) continue;
+		float weight = 1.0 - abs(float(i)) / float(w + 1);
+		sum += v * weight;
+		weightSum += weight;
+	}
+	vec4 blurred = weightSum > 0.0 ? sum / weightSum : vec4(0.0, 0.0, 0.0, -1.0);
+	#if REFL_PREPASS == 4
+		imageStore(reflWorldBlurTmp_img, lo, blurred);
+	#else
+		imageStore(reflWorldBlur_img, lo, blurred);
 	#endif
 #endif
 }
