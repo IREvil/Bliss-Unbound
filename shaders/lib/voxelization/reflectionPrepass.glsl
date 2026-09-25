@@ -168,9 +168,11 @@ void main() {
 			vec4 v = imageLoad(reflWorldBlurTmp_img, c);
 		#endif
 		if (v.a < 0.0) continue;
-		// Smooth falloff rather than a box, so the reflection does not gain a hard edge of its own size.
+		// Two scales in one kernel. A rough surface does not see a smeared copy of one object: it sees a tight core
+		// around the mirror direction plus a broad wash of everything else the cone covers, and the wash is what
+		// makes it read as rough. A single gaussian only ever gives the first of those.
 		float t = float(i) / float(w);
-		float weight = exp(-3.0 * t * t);
+		float weight = 0.55 * exp(-9.0 * t * t) + 0.45 * exp(-2.0 * t * t);
 		sum += v * weight;
 		weightSum += weight;
 	}

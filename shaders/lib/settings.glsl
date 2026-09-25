@@ -1036,14 +1036,15 @@ const vec3 aerochrome_color = mix(vec3(1.0, 0.0, 0.0), vec3(0.715, 0.303, 0.631)
 // How far a rough surface spreads its reflection, in screen pixels. A reduced-resolution trace holds one ray per
 // reduced texel, so it cannot cover the cone a rough surface really sees; this blurs that buffer over the cone's
 // footprint on the reduced grid (two extra compute passes) and blends it in as roughness rises, so mirrors stay
-// sharp and rough surfaces stop reading as mirrors. The width is converted to reduced texels per pass, so it looks
-// the same at every resolution setting. 0 turns the passes off and keeps every reflection on its exact ray.
+// sharp and rough surfaces stop reading as mirrors. The kernel carries a tight core and a broad wash together,
+// because that is what a cone looks like: a smeared copy of one object is not roughness. The width is converted to
+// reduced texels per pass, so it looks the same at every resolution setting. 0 turns the passes off and keeps every
+// reflection on its exact ray.
 #define REFLECTION_BLUR 50 // [0 25 50 75 100]
-// How much brightness a rough reflection keeps (percent). The blur runs on the reduced grid, so it can only average
-// a fraction of the cone a rough surface really sees and its peak stays far higher than a full-resolution cone
-// average would. Without this, the reflection of a bright block (a fireplace, an emissive ore) reads as an
-// overblown patch where the full-resolution path is barely noticeable. Mirrors are not affected.
-#define ROUGH_REFLECTION_STRENGTH 65 // [0 25 40 50 60 65 70 80 90 100]
+// How much brightness a rough reflection keeps (percent). The blur carries the spread itself, so this only matches
+// the overall level: raise it once the spread is doing the work, and lower it if a bright block's reflection (a
+// fireplace, glowing ore) still reads as an overblown patch. Mirrors and the full-resolution path are unaffected.
+#define ROUGH_REFLECTION_STRENGTH 85 // [0 25 40 50 60 65 70 80 85 90 100]
 // Off traces all reflections at full resolution inside the lighting pass (the resolution sliders then do nothing).
 #define REFLECTION_PREPASS
 #ifdef REFLECTION_PREPASS

@@ -263,13 +263,13 @@ float convertHandDepth_2(in float depth, bool hand) {
 	#if defined REFL_PREPASS_WORLD && REFLECTION_BLUR > 0
 		#define REFL_BLUR_AVAILABLE
 		#if REFLECTION_BLUR == 25
-			#define REFL_BLUR_PX 8.0
+			#define REFL_BLUR_PX 12.0
 		#elif REFLECTION_BLUR == 50
-			#define REFL_BLUR_PX 20.0
+			#define REFL_BLUR_PX 28.0
 		#elif REFLECTION_BLUR == 75
-			#define REFL_BLUR_PX 36.0
+			#define REFL_BLUR_PX 48.0
 		#else
-			#define REFL_BLUR_PX 56.0
+			#define REFL_BLUR_PX 72.0
 		#endif
 	#endif
 	#if REFL_PREPASS == 1
@@ -1598,9 +1598,9 @@ void main() {
 				float reflRough = clamp((1.0 - SpecularTex.r) * 2.0, 0.0, 1.0);
 				float reflScale = float(REFLECTION_RES_WORLD) * 0.01;
 				#ifdef REFL_BLUR_AVAILABLE
-					// Mirrors keep the trace (their cone is a ray); a polished surface gets a little of the blur as a
-					// broad halo, and anything genuinely rough gets all of it.
-					float reflBlurMix = smoothstep(0.12, 0.55, reflRough);
+					// Mirrors keep the trace (their cone is a ray); anything with a real cone takes the spread, which is
+					// most solid blocks, leaving the exact trace to the near-mirrors.
+					float reflBlurMix = smoothstep(0.04, 0.34, reflRough);
 					vec4 reflSoft = ReflUpsample(2, reflScale, depthtex1, z, reflRough, vec3(0.0));
 					vec4 reflValue;
 					if (reflSoft.a >= 0.0 && reflBlurMix >= 0.999) {
