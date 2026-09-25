@@ -250,12 +250,14 @@ float convertHandDepth_2(in float depth, bool hand) {
 		layout(rgba16f) uniform writeonly image2D reflMirror_img;
 	#elif REFL_PREPASS == 3
 		layout(rgba16f) uniform readonly image2D reflWorld_img;
-		// Accumulated block reflections, ping-ponged by framemod2.
+		// Accumulated block reflections, ping-ponged by framemod2, plus their coarse copy.
 		layout(rgba16f) uniform image2D reflWorldAccA_img;
 		layout(rgba16f) uniform image2D reflWorldAccB_img;
+		layout(rgba16f) uniform writeonly image2D reflWorldBlur_img;
 	#else
 		layout(rgba16f) uniform readonly image2D reflWorldAccA_img;
 		layout(rgba16f) uniform readonly image2D reflWorldAccB_img;
+		layout(rgba16f) uniform readonly image2D reflWorldBlur_img;
 		#ifdef REFL_PREPASS_MIRROR
 			layout(rgba16f) uniform readonly image2D reflMirror_img;
 		#endif
@@ -860,6 +862,7 @@ void applyPuddles(
 		#ifdef REFL_PREPASS_MIRROR
 			if (which == 1) return imageLoad(reflMirror_img, c);
 		#endif
+		if (which == 3) return imageLoad(reflWorldBlur_img, c);
 		return framemod2 == 0 ? imageLoad(reflWorldAccA_img, c) : imageLoad(reflWorldAccB_img, c);
 	}
 
@@ -908,6 +911,23 @@ void applyPuddles(
 		if (weightSum <= 0.0) return vec4(0.0, 0.0, 0.0, -1.0);
 		vec4 avg = sum / weightSum;
 		if (blur <= 0.02) return avg;
+
+		// Rough surface: mix in the coarse copy of the reflection. Blurring the image, not just its texture detail, is
+		// what makes a rough surface stop reading as a mirror; it stays smooth because the copy is already averaged.
+		float blurMix = clamp(blur * float(REFLECTION_BLUR) * 0.01, 0.0, 1.0);
+		if (blurMix > 0.0) {
+			vec4 blurSum = vec4(0.0);
+			float blurWeight = 0.0;
+			for (int i = 0; i < 4; i++) {
+				ivec2 o = ivec2(i & 1, i >> 1);
+				vec4 v;
+				float w = ReflTap(3, lo0, loMax, lo, 1.5, depthTex, refL, scale, refDir, o - 1, v);
+				if (w <= 0.0) continue;
+				blurSum += v * (w + 1e-4);
+				blurWeight += w + 1e-4;
+			}
+			if (blurWeight > 0.0) avg = mix(avg, blurSum / blurWeight, blurMix);
+		}
 
 		// Rough surface: a ray that caught a light source is far brighter than its neighbours and would flicker as it
 		// moves. Keep taps near the local average, which is what the eye reads as the reflection.

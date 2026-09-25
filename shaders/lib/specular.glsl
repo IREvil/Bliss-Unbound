@@ -495,6 +495,14 @@ vec3 specularReflections(
 	// texel and reads as speckle. World-space reflections therefore use the geometric ray; roughness is applied by
 	// the reflection pass' upsample instead, where the blur can be smooth instead of noisy.
 	vec3 mirrorVector_L = reflect(playerPos, normal);
+	#if defined REFL_PREPASS_WORLD
+		// Reduced resolution: the exact ray plus the coarse-copy blur (deterministic, so it cannot flicker).
+		vec3 wsrRay_L = mirrorVector_L;
+	#else
+		// Full resolution: keep the per-pixel roughened ray. It reads as roughness where the sample count hides its
+		// noise, which is how the pack looked before the reduced-resolution pass existed.
+		vec3 wsrRay_L = reflectedVector_L;
+	#endif
 	float VdotN = dot(-normalize(viewDir), vec3(0.0,0.0,1.0));
 	float shlickFresnel = shlickFresnelRoughness(VdotN, roughness);
 
@@ -573,7 +581,7 @@ vec3 specularReflections(
 					wsrHitDist = -2.0;
 					if (!isHand && !mirrorNoWSR) {
 						vec3 wsrPlayerPos = mat3(gbufferModelViewInverse) * viewPos + gbufferModelViewInverse[3].xyz;
-						enviornmentReflection = BlissWSR(wsrPlayerPos, normal, mirrorVector_L);
+						enviornmentReflection = BlissWSR(wsrPlayerPos, normal, wsrRay_L);
 					}
 					bool wsrHit = enviornmentReflection.a > 0.0;
 					bool wsrCovered = wsrHitDist > -1.5;
@@ -608,7 +616,7 @@ vec3 specularReflections(
 				#if defined INCLUDE_BLISS_WSR
 					if (enviornmentReflection.a < 0.999 && !isHand && !mirrorNoWSR) {
 						vec3 wsrPlayerPos = mat3(gbufferModelViewInverse) * viewPos + gbufferModelViewInverse[3].xyz;
-						vec4 wsr = BlissWSR(wsrPlayerPos, normal, mirrorVector_L);
+						vec4 wsr = BlissWSR(wsrPlayerPos, normal, wsrRay_L);
 						enviornmentReflection.rgb = mix(wsr.rgb, enviornmentReflection.rgb, enviornmentReflection.a);
 						enviornmentReflection.a = max(enviornmentReflection.a, wsr.a);
 						#if DEBUG_VIEW == debug_WSR

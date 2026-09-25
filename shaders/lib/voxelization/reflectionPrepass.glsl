@@ -84,6 +84,21 @@ void main() {
 	}
 	if (framemod2 == 0) imageStore(reflWorldAccA_img, lo, result);
 	else imageStore(reflWorldAccB_img, lo, result);
+
+	// Coarse copy of the accumulated reflection for rough surfaces: 16 taps on a 2-texel stride span an 8x8 texel
+	// area, and the lighting pass samples it bilinearly, so a rough surface reads as a broad smear of the scene
+	// instead of a mirror. Reading last frame's buffer keeps it clear of the write above.
+	vec4 blurSum = vec4(0.0);
+	float blurWeight = 0.0;
+	for (int i = 0; i < 16; i++) {
+		ivec2 o = (ivec2(i & 3, i >> 2) - 1) * 2;
+		vec4 v = framemod2 == 0 ? imageLoad(reflWorldAccB_img, clamp(lo + o, ivec2(0), loSize - 1))
+		                        : imageLoad(reflWorldAccA_img, clamp(lo + o, ivec2(0), loSize - 1));
+		if (v.a < 0.0) continue;
+		blurSum += v;
+		blurWeight += 1.0;
+	}
+	imageStore(reflWorldBlur_img, lo, blurWeight > 0.0 ? vec4(blurSum.rgb / blurWeight, 1.0) : vec4(0.0, 0.0, 0.0, -1.0));
 #endif
 #if (REFL_PREPASS == 1 && defined REFL_PREPASS_WORLD) || (REFL_PREPASS == 2 && defined REFL_PREPASS_MIRROR)
 	float scale = float(REFL_RES) * 0.01;
