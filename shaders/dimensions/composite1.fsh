@@ -242,18 +242,6 @@ float convertHandDepth_2(in float depth, bool hand) {
 // reflections are traced inline. 100% is not a reduced resolution: there the prepass would trace the same one ray
 // per screen pixel and then upsample it, so the inline path is both cheaper and identical to it.
 #if defined REFL_PREPASS_AVAILABLE && defined REFLECTION_PREPASS_ON && defined INCLUDE_BLISS_WSR && defined OVERWORLD_SHADER
-	// Side of the upsample's tap grid: the widest blur a fully rough surface can average, and with it the cost.
-	#if REFLECTION_BLUR == 0
-		#define REFL_BLUR_SIDE 1
-	#elif REFLECTION_BLUR == 25
-		#define REFL_BLUR_SIDE 2
-	#elif REFLECTION_BLUR == 50
-		#define REFL_BLUR_SIDE 3
-	#elif REFLECTION_BLUR == 75
-		#define REFL_BLUR_SIDE 4
-	#else
-		#define REFL_BLUR_SIDE 5
-	#endif
 	#if REFLECTION_RES_WORLD < 100
 		#define REFL_PREPASS_WORLD
 	#endif
@@ -263,8 +251,9 @@ float convertHandDepth_2(in float depth, bool hand) {
 	// The roughness blur of the reduced-resolution reflection (world0/composite2_c/_d.csh). A rough surface reflects
 	// a cone, not a ray, and averaging the reduced-resolution texels around the pixel is the only way to gather
 	// enough of that cone cheaply: the passes run on the reduced grid, so one tap costs a fraction of a traced ray.
-	// The width is given in screen pixels and converted to reduced-resolution texels, so the blur looks the same at
-	// every resolution setting.
+	// The width is in screen pixels and is converted to reduced-resolution texels per pass, so the blur looks the
+	// same at every resolution setting. It stays modest: a wider kernel spreads a reflection further past the
+	// object it shows, and the intensity is handled separately by ROUGH_REFLECTION_STRENGTH.
 	//
 	// Iris collects a program's extra compute passes as <program>_a.csh, _b.csh, _c.csh ... and STOPS AT THE FIRST
 	// MISSING LETTER (ProgramSet.readComputeArray breaks when the source is null). The letters therefore have to stay
@@ -274,13 +263,13 @@ float convertHandDepth_2(in float depth, bool hand) {
 	#if defined REFL_PREPASS_WORLD && REFLECTION_BLUR > 0
 		#define REFL_BLUR_AVAILABLE
 		#if REFLECTION_BLUR == 25
-			#define REFL_BLUR_PX 12.0
+			#define REFL_BLUR_PX 8.0
 		#elif REFLECTION_BLUR == 50
-			#define REFL_BLUR_PX 32.0
+			#define REFL_BLUR_PX 20.0
 		#elif REFLECTION_BLUR == 75
-			#define REFL_BLUR_PX 64.0
+			#define REFL_BLUR_PX 36.0
 		#else
-			#define REFL_BLUR_PX 128.0
+			#define REFL_BLUR_PX 56.0
 		#endif
 	#endif
 	#if REFL_PREPASS == 1
@@ -919,42 +908,32 @@ void applyPuddles(
 		#endif
 	}
 
-	// Averages the reduced-resolution reflection over a grid of taps. REFLECTION_BLUR fixes the widest grid and the
-	// surface's own roughness decides how much of it applies: a mirror keeps one tap and pays nothing, a rough
-	// surface takes the whole grid and so sees a mixture of what its reflection cone really covers instead of a
-	// mirror image of one point. The weight falls off with distance, so the average stays anchored on the exact
-	// ray's hit, and taps whose depth is not this surface are skipped, so no blur can cross a silhouette.
+	// Reads the reduced-resolution reflection for this pixel: the texel that contains it plus its three neighbours,
+	// weighted like a bilinear fetch and depth-tested so the value always comes from this surface.
 	// which: 0 = the traced block reflection, 1 = water/glass, 2 = the blurred block reflection.
+	//
+	// It stays a 2 x 2 window on purpose. This runs for every screen pixel of the frame, so widening it would charge
+	// the whole frame: the trace is where reduced resolution pays, and roughness is carried by the blur passes, which
+	// run on the reduced grid. A pixel sitting on a texel boundary keeps one full-weight tap and pays nothing else.
 	vec4 ReflUpsample(int which, float scale, sampler2D depthTex, float refDepth, float roughness, vec3 refDir) {
-		// 1 keeps the small fixed 2 x 2 water/glass always had (it carries a ray, not a roughness); 2 reads an image
-		// that a wide blur has already averaged, so it only needs enough taps to interpolate it.
-		int side = (which == 1 || which == 2) ? 2 : REFL_BLUR_SIDE;
-		float sigma = which == 1 ? 1.5 : which == 2 ? 0.6 : max(clamp(roughness, 0.0, 1.0) * float(REFL_BLUR_SIDE - 1) * 0.5, 1e-3);
-		float sigma2 = sigma * sigma;
 		vec2 screen = vec2(viewWidth, viewHeight);
 		ivec2 loMax = ivec2(ceil(screen * scale)) - 1;
 		vec2 lo = gl_FragCoord.xy * scale - 0.5;
 		ivec2 loBase = ivec2(floor(lo));
-		int halfSpan = (side - 1) / 2;
+		vec2 f = clamp(lo - vec2(loBase), 0.0, 0.999);
 		float refL = ld(refDepth);
 
 		vec4 sum = vec4(0.0);
 		float weightSum = 0.0;
-		for (int i = 0; i < 25; i++) {
-			if (i >= side * side) break;
-			ivec2 o = ivec2(i % side, i / side) - halfSpan;
-			// Whole ring at a time: it is skipped once even its nearest possible tap is negligible.
-			float ring = float(max(abs(o.x), abs(o.y)));
-			if (ring > 1.0 && (ring - 1.0) * (ring - 1.0) > 6.5 * sigma2) continue;
-			// Measured from the texel that contains the pixel, so a sharp surface keeps one full-weight tap instead
-			// of spreading its weight over taps that all sit a fraction of a texel away.
-			vec2 d = vec2(o);
+		for (int i = 0; i < 4; i++) {
+			ivec2 o = ivec2(i & 1, i >> 1);
+			float w = (o.x == 1 ? f.x : 1.0 - f.x) * (o.y == 1 ? f.y : 1.0 - f.y);
+			if (w <= 0.0) continue;
 			ivec2 c = clamp(loBase + o, ivec2(0), loMax);
 			vec4 v = ReflLoad(which, c);
 			if (v.a < 0.0) continue;
 			ivec2 rep = min(ivec2((vec2(c) + 0.5) / scale), ivec2(screen) - 1);
 			if (abs(ld(texelFetch2D(depthTex, rep, 0).x) - refL) > refL * 0.05 + 1e-4) continue;
-			float w = exp(-dot(d, d) / sigma2);
 			sum += v * w;
 			weightSum += w;
 		}
@@ -1620,20 +1599,27 @@ void main() {
 				float reflScale = float(REFLECTION_RES_WORLD) * 0.01;
 				#ifdef REFL_BLUR_AVAILABLE
 					// Mirrors keep the trace (their cone is a ray); a polished surface gets a little of the blur as a
-					// broad halo, and anything genuinely rough gets all of it. If the soft copy has nothing for this
-					// pixel the trace is used instead, so the blur can only soften a reflection, never remove it.
+					// broad halo, and anything genuinely rough gets all of it.
 					float reflBlurMix = smoothstep(0.12, 0.55, reflRough);
-					vec4 reflSharp = ReflUpsample(0, reflScale, depthtex1, z, reflRough, vec3(0.0));
 					vec4 reflSoft = ReflUpsample(2, reflScale, depthtex1, z, reflRough, vec3(0.0));
-					if (reflSoft.a < 0.0) reflSoft = reflSharp;
-					reflWorldFetched = mix(reflSharp, reflSoft, reflBlurMix);
+					vec4 reflValue;
+					if (reflSoft.a >= 0.0 && reflBlurMix >= 0.999) {
+						// Fully rough and the blurred copy covers this pixel: the trace is not needed at all.
+						reflValue = reflSoft;
+					} else {
+						// If the soft copy has nothing here the trace is used instead, so the blur can only soften a
+						// reflection, never remove it.
+						vec4 reflSharp = ReflUpsample(0, reflScale, depthtex1, z, reflRough, vec3(0.0));
+						reflValue = reflSoft.a < 0.0 ? reflSharp : mix(reflSharp, reflSoft, reflBlurMix);
+					}
 					// A cone average is much dimmer than the mirror sample it replaces, and the blur only covers part of
 					// the cone, so its peak is still far too high. Dim what a rough surface takes by how much of the
 					// blurred copy it uses; scaling the coverage too keeps the surface's own shading rather than
 					// darkening it. Mirrors keep the trace and are untouched.
 					float reflDim = mix(1.0, float(ROUGH_REFLECTION_STRENGTH) * 0.01, reflBlurMix);
-					reflWorldFetched.rgb *= reflDim;
-					reflWorldFetched.a *= reflDim;
+					reflValue.rgb *= reflDim;
+					reflValue.a *= reflDim;
+					reflWorldFetched = reflValue;
 				#else
 					reflWorldFetched = ReflUpsample(0, reflScale, depthtex1, z, reflRough, vec3(0.0));
 				#endif

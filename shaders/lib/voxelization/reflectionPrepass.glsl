@@ -145,14 +145,15 @@ void main() {
 	ivec2 loMax = ivec2(ceil(screen * scale)) - 1;
 	if (any(greaterThan(lo, loMax))) return;
 
-	// Width in reduced texels for this resolution, capped so the two passes stay bounded in cost.
-	int w = clamp(int(round(REFL_BLUR_PX * scale)), 1, 24);
+	// Width in reduced texels for this resolution, capped so the two passes stay bounded in cost: this is the only
+	// place the blur is paid for, and it runs on the reduced grid.
+	int w = clamp(int(round(REFL_BLUR_PX * scale)), 1, 16);
 	ivec2 px = min(ivec2((vec2(lo) + 0.5) / scale), ivec2(screen) - 1);
 	float refL = ld(texelFetch2D(depthtex1, px, 0).x);
 
 	vec4 sum = vec4(0.0);
 	float weightSum = 0.0;
-	for (int i = -24; i <= 24; i++) {
+	for (int i = -16; i <= 16; i++) {
 		if (i < -w || i > w) continue;
 		#if REFL_PREPASS == 3
 			ivec2 c = clamp(ivec2(lo.x + i, lo.y), ivec2(0), loMax);
@@ -167,7 +168,9 @@ void main() {
 			vec4 v = imageLoad(reflWorldBlurTmp_img, c);
 		#endif
 		if (v.a < 0.0) continue;
-		float weight = 1.0 - abs(float(i)) / float(w + 1);
+		// Smooth falloff rather than a box, so the reflection does not gain a hard edge of its own size.
+		float t = float(i) / float(w);
+		float weight = exp(-3.0 * t * t);
 		sum += v * weight;
 		weightSum += weight;
 	}
