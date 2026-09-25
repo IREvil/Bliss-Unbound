@@ -491,6 +491,10 @@ vec3 specularReflections(
 	#else
 		vec3 reflectedVector_L = reflect(playerPos, normal);
 	#endif
+	// The voxel volume is half-metre cells behind a 4 m LOD grid, so a jittered ray lands on a different block every
+	// texel and reads as speckle. World-space reflections therefore use the geometric ray; roughness is applied by
+	// the reflection pass' upsample instead, where the blur can be smooth instead of noisy.
+	vec3 mirrorVector_L = reflect(playerPos, normal);
 	float VdotN = dot(-normalize(viewDir), vec3(0.0,0.0,1.0));
 	float shlickFresnel = shlickFresnelRoughness(VdotN, roughness);
 
@@ -569,7 +573,7 @@ vec3 specularReflections(
 					wsrHitDist = -2.0;
 					if (!isHand && !mirrorNoWSR) {
 						vec3 wsrPlayerPos = mat3(gbufferModelViewInverse) * viewPos + gbufferModelViewInverse[3].xyz;
-						enviornmentReflection = BlissWSR(wsrPlayerPos, normal, normalize(reflectedVector_L));
+						enviornmentReflection = BlissWSR(wsrPlayerPos, normal, mirrorVector_L);
 					}
 					bool wsrHit = enviornmentReflection.a > 0.0;
 					bool wsrCovered = wsrHitDist > -1.5;
@@ -604,7 +608,7 @@ vec3 specularReflections(
 				#if defined INCLUDE_BLISS_WSR
 					if (enviornmentReflection.a < 0.999 && !isHand && !mirrorNoWSR) {
 						vec3 wsrPlayerPos = mat3(gbufferModelViewInverse) * viewPos + gbufferModelViewInverse[3].xyz;
-						vec4 wsr = BlissWSR(wsrPlayerPos, normal, normalize(reflectedVector_L));
+						vec4 wsr = BlissWSR(wsrPlayerPos, normal, mirrorVector_L);
 						enviornmentReflection.rgb = mix(wsr.rgb, enviornmentReflection.rgb, enviornmentReflection.a);
 						enviornmentReflection.a = max(enviornmentReflection.a, wsr.a);
 						#if DEBUG_VIEW == debug_WSR
