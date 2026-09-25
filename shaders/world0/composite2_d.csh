@@ -1,7 +1,7 @@
 #version 430 compatibility
 
-// Horizontal pass of the rough-reflection blur, at REFLECTION_RES_WORLD; runs after composite2_a (the trace) and
-// before composite2_e (the vertical pass) and composite2 (the lighting pass).
+// Vertical pass of the rough-reflection blur, at REFLECTION_RES_WORLD; runs after composite2_c and before
+// composite2 (the lighting pass), which blends the result in for rough surfaces.
 #define OVERWORLD_SHADER
 #define PLAYER_REF_TRACE
 #define REFL_PREPASS_AVAILABLE

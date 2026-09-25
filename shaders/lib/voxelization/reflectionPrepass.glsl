@@ -1,7 +1,10 @@
-// Reduced-resolution reflection prepass (compute, world0/composite2_a/_b/_d/_e.csh).
+// Reduced-resolution reflection prepass (compute, world0/composite2_a/_b/_c/_d.csh).
 // Compiled from dimensions/composite1.fsh with REFL_PREPASS = 1 (blocks), 2 (water/glass),
-// 4 (horizontal blur of 1) or 5 (vertical blur of 4). Each invocation handles one low-res texel at the full-res
+// 3 (horizontal blur of 1) or 4 (vertical blur of 3). Each invocation handles one low-res texel at the full-res
 // pixel it stands for; the lighting pass upsamples the result.
+//
+// Iris requires the letters to be contiguous from _a: it collects <program>_a.csh, _b.csh, _c.csh ... and stops at
+// the first missing one. A gap silently drops every later pass.
 
 layout(local_size_x = 8, local_size_y = 8) in;
 
@@ -15,10 +18,10 @@ uniform int framemod8;
 #if REFL_PREPASS == 2
 	#define REFL_RES REFLECTION_RES_MIRROR
 #else
-	// Passes 4 and 5 blur pass 1's buffer, so they follow the world resolution.
+	// Passes 3 and 4 blur pass 1's buffer, so they follow the world resolution.
 	#define REFL_RES REFLECTION_RES_WORLD
 #endif
-#if (REFL_PREPASS == 1 && !defined REFL_PREPASS_WORLD) || (REFL_PREPASS == 2 && !defined REFL_PREPASS_MIRROR) || ((REFL_PREPASS == 4 || REFL_PREPASS == 5) && !defined REFL_BLUR_AVAILABLE)
+#if (REFL_PREPASS == 1 && !defined REFL_PREPASS_WORLD) || (REFL_PREPASS == 2 && !defined REFL_PREPASS_MIRROR) || ((REFL_PREPASS == 3 || REFL_PREPASS == 4) && !defined REFL_BLUR_AVAILABLE)
 	// A resolution of 100% needs no prepass, and the blur is off: the lighting pass traces inline there. Dispatch
 	// one group and return.
 	const vec2 workGroupsRender = vec2(0.015625, 0.015625);
@@ -105,6 +108,12 @@ void main() {
 			result = reflPrepassOut;
 		}
 		imageStore(reflWorld_img, lo, result);
+		#ifdef REFL_BLUR_AVAILABLE
+			// The blur passes overwrite this. Writing it here means that if they are ever skipped (a gap in the
+			// _a/_b/_c/_d chain stops Iris collecting them) the lighting pass still finds the traced reflection
+			// rather than an uninitialised image, and only loses the softness.
+			imageStore(reflWorldBlur_img, lo, result);
+		#endif
 	#else
 		uvec4 td = imageLoad(wsrTrans_img, px);
 		if (z0 < 1.0 && td.w != 0u && abs(uintBitsToFloat(td.w) - z0) < 1e-6) {
@@ -124,7 +133,7 @@ void main() {
 		imageStore(reflMirror_img, lo, result);
 	#endif
 #endif
-#if (REFL_PREPASS == 4 || REFL_PREPASS == 5) && defined REFL_BLUR_AVAILABLE
+#if (REFL_PREPASS == 3 || REFL_PREPASS == 4) && defined REFL_BLUR_AVAILABLE
 	// A wide blur of pass 1's buffer: the surface's roughness spreads its reflection over a cone that one ray per
 	// reduced texel cannot cover, and this is where the cone's samples come from. Two triangular passes make a
 	// smooth kernel, the taps are one reduced texel apart so the average is dense (a sparse one would sparkle),
@@ -145,14 +154,14 @@ void main() {
 	float weightSum = 0.0;
 	for (int i = -24; i <= 24; i++) {
 		if (i < -w || i > w) continue;
-		#if REFL_PREPASS == 4
+		#if REFL_PREPASS == 3
 			ivec2 c = clamp(ivec2(lo.x + i, lo.y), ivec2(0), loMax);
 		#else
 			ivec2 c = clamp(ivec2(lo.x, lo.y + i), ivec2(0), loMax);
 		#endif
 		ivec2 rep = min(ivec2((vec2(c) + 0.5) / scale), ivec2(screen) - 1);
 		if (abs(ld(texelFetch2D(depthtex1, rep, 0).x) - refL) > refL * 0.05 + 1e-4) continue;
-		#if REFL_PREPASS == 4
+		#if REFL_PREPASS == 3
 			vec4 v = imageLoad(reflWorld_img, c);
 		#else
 			vec4 v = imageLoad(reflWorldBlurTmp_img, c);
@@ -162,10 +171,12 @@ void main() {
 		sum += v * weight;
 		weightSum += weight;
 	}
-	vec4 blurred = weightSum > 0.0 ? sum / weightSum : vec4(0.0, 0.0, 0.0, -1.0);
-	#if REFL_PREPASS == 4
+	// With no usable tap the source's own value is kept: the blur can only ever soften a reflection, never drop it.
+	#if REFL_PREPASS == 3
+		vec4 blurred = weightSum > 0.0 ? sum / weightSum : imageLoad(reflWorld_img, lo);
 		imageStore(reflWorldBlurTmp_img, lo, blurred);
 	#else
+		vec4 blurred = weightSum > 0.0 ? sum / weightSum : imageLoad(reflWorldBlurTmp_img, lo);
 		imageStore(reflWorldBlur_img, lo, blurred);
 	#endif
 #endif

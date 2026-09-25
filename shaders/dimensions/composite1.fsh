@@ -260,11 +260,17 @@ float convertHandDepth_2(in float depth, bool hand) {
 	#if defined WSR_DEFER_RESOLVE && REFLECTION_RES_MIRROR < 100
 		#define REFL_PREPASS_MIRROR
 	#endif
-	// The roughness blur of the reduced-resolution reflection (world0/composite2_d/_e.csh). A rough surface reflects
+	// The roughness blur of the reduced-resolution reflection (world0/composite2_c/_d.csh). A rough surface reflects
 	// a cone, not a ray, and averaging the reduced-resolution texels around the pixel is the only way to gather
 	// enough of that cone cheaply: the passes run on the reduced grid, so one tap costs a fraction of a traced ray.
 	// The width is given in screen pixels and converted to reduced-resolution texels, so the blur looks the same at
 	// every resolution setting.
+	//
+	// Iris collects a program's extra compute passes as <program>_a.csh, _b.csh, _c.csh ... and STOPS AT THE FIRST
+	// MISSING LETTER (ProgramSet.readComputeArray breaks when the source is null). The letters therefore have to stay
+	// contiguous from _a: a gap silently drops every later pass, which is what happened when the blur was shipped as
+	// _d/_e with no _c. composite2's chain is now _a (blocks), _b (water/glass), _c (blur, horizontal), _d (blur,
+	// vertical). Keep it that way if a pass is ever removed.
 	#if defined REFL_PREPASS_WORLD && REFLECTION_BLUR > 0
 		#define REFL_BLUR_AVAILABLE
 		#if REFLECTION_BLUR == 25
@@ -279,12 +285,17 @@ float convertHandDepth_2(in float depth, bool hand) {
 	#endif
 	#if REFL_PREPASS == 1
 		layout(rgba16f) uniform writeonly image2D reflWorld_img;
+		#ifdef REFL_BLUR_AVAILABLE
+			// Also written here, so that a missing or empty blur pass can only ever cost smoothness, never the
+			// reflection itself: the trace's own value is already in the image the lighting pass reads.
+			layout(rgba16f) uniform writeonly image2D reflWorldBlur_img;
+		#endif
 	#elif REFL_PREPASS == 2
 		layout(rgba16f) uniform writeonly image2D reflMirror_img;
-	#elif REFL_PREPASS == 4
+	#elif REFL_PREPASS == 3
 		layout(rgba16f) uniform readonly image2D reflWorld_img;
 		layout(rgba16f) uniform writeonly image2D reflWorldBlurTmp_img;
-	#elif REFL_PREPASS == 5
+	#elif REFL_PREPASS == 4
 		layout(rgba16f) uniform readonly image2D reflWorldBlurTmp_img;
 		layout(rgba16f) uniform writeonly image2D reflWorldBlur_img;
 	#else
@@ -1609,14 +1620,13 @@ void main() {
 				float reflScale = float(REFLECTION_RES_WORLD) * 0.01;
 				#ifdef REFL_BLUR_AVAILABLE
 					// Mirrors keep the trace (their cone is a ray); a polished surface gets a little of the blur as a
-					// broad halo, and anything genuinely rough gets all of it.
+					// broad halo, and anything genuinely rough gets all of it. If the soft copy has nothing for this
+					// pixel the trace is used instead, so the blur can only soften a reflection, never remove it.
 					float reflBlurMix = smoothstep(0.15, 0.6, reflRough);
-					if (reflBlurMix >= 0.999) {
-						reflWorldFetched = ReflUpsample(2, reflScale, depthtex1, z, reflRough, vec3(0.0));
-					} else {
-						reflWorldFetched = mix(ReflUpsample(0, reflScale, depthtex1, z, reflRough, vec3(0.0)),
-							ReflUpsample(2, reflScale, depthtex1, z, reflRough, vec3(0.0)), reflBlurMix);
-					}
+					vec4 reflSharp = ReflUpsample(0, reflScale, depthtex1, z, reflRough, vec3(0.0));
+					vec4 reflSoft = ReflUpsample(2, reflScale, depthtex1, z, reflRough, vec3(0.0));
+					if (reflSoft.a < 0.0) reflSoft = reflSharp;
+					reflWorldFetched = mix(reflSharp, reflSoft, reflBlurMix);
 				#else
 					reflWorldFetched = ReflUpsample(0, reflScale, depthtex1, z, reflRough, vec3(0.0));
 				#endif
