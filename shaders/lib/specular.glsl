@@ -319,7 +319,6 @@ vec4 screenSpaceReflections(
 #if defined INCLUDE_BLISS_WSR && defined WSR_DEFER_RESOLVE
 	// Environment reflection of a water/glass surface recorded by the water pass: SSR plus WSR in the chosen order.
 	// playerPos/normal/rayDir are world-space; noWSR = the surface's quality is POTATO.
-	// samples is the SSR step count for this surface; the reduced-resolution prepass asks for more of them.
 	vec4 MirrorEnvironment(vec3 viewPos, vec3 playerPos, vec3 normal, vec3 rayDir, bool noWSR, float noise, float samples) {
 		ssrQualityOverride = samples;
 		float ssrMask = 1.0;

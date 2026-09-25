@@ -82,7 +82,6 @@ vec4 WsrShade(ivec3 voxelPos, vec3 playerPos, vec3 normal, vec3 rayStart, vec3 r
     float virtualDist = length(playerPos - rayStart) + length(rayStart);
     float textureFactor = length(textureRad * atlas) * 3.0;
     float lod = 0.5 * log2(max(virtualDist * textureFactor / gbufferProjection[0][0] / max(abs(dot(normal, rayDir)), 0.05) / (1.0 / texelSize.y) / wsrLodScale, 1e-6));
-    lod *= REFLECTION_BLUR * 0.01;
     vec4 color = texture2DLod(textureAtlas, face.textureBounds.xy + 2.0 * textureRad * localTexCoord, max(lod, 0.0));
     if (color.a < 0.0041) return vec4(-1.0);
 

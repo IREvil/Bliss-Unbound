@@ -12,7 +12,7 @@ uniform vec3 moonPosition;
 uniform int framemod8;
 #include "/lib/TAA_jitter.glsl"
 
-#if REFL_PREPASS == 1 || REFL_PREPASS == 3
+#if REFL_PREPASS == 1
 	#define REFL_RES REFLECTION_RES_WORLD
 #else
 	#define REFL_RES REFLECTION_RES_MIRROR
@@ -28,78 +28,6 @@ uniform int framemod8;
 #endif
 
 void main() {
-#if REFL_PREPASS == 3 && defined REFL_PREPASS_WORLD
-	// Blend this frame's block reflections with the reprojected history, clamped to the current 5x5 neighbourhood.
-	// The wide box keeps the history usable on smooth gradients (a tight one rejects it and the raw noise shows).
-	float scale = float(REFL_RES) * 0.01;
-	vec2 screen = vec2(viewWidth, viewHeight);
-	ivec2 loSize = ivec2(ceil(screen * scale));
-	ivec2 lo = ivec2(gl_GlobalInvocationID.xy);
-	if (any(greaterThanEqual(lo, loSize))) return;
-
-	vec4 current = imageLoad(reflWorld_img, lo);
-	vec4 result = current;
-	if (current.a >= 0.0) {
-		vec4 boxMin = current;
-		vec4 boxMax = current;
-		for (int i = 0; i < 25; i++) {
-			vec4 v = imageLoad(reflWorld_img, clamp(lo + ivec2(i % 5, i / 5) - 2, ivec2(0), loSize - 1));
-			if (v.a < 0.0) continue;
-			boxMin = min(boxMin, v);
-			boxMax = max(boxMax, v);
-		}
-
-		ivec2 px = min(ivec2((vec2(lo) + 0.5) / scale), ivec2(screen) - 1);
-		#ifdef TAA
-			TAA_Offset = offsets[framemod8];
-		#else
-			TAA_Offset = vec2(0.0);
-		#endif
-		vec2 texcoord = (vec2(px) + 0.5) * texelSize;
-		vec3 viewPos = toScreenSpace(vec3(texcoord / RENDER_SCALE - TAA_Offset * texelSize * 0.5, texelFetch2D(depthtex1, px, 0).x));
-		vec3 prevPos = mat3(gbufferModelViewInverse) * viewPos + gbufferModelViewInverse[3].xyz + (cameraPosition - previousCameraPosition);
-		prevPos = mat3(gbufferPreviousModelView) * prevPos + gbufferPreviousModelView[3].xyz;
-		vec2 prevUV = projMAD(gbufferPreviousProjection, prevPos).xy / -prevPos.z * 0.5 + 0.5;
-
-		if (all(greaterThan(prevUV, vec2(0.0))) && all(lessThan(prevUV, vec2(1.0)))) {
-			vec2 hlo = prevUV * screen * scale - 0.5;
-			ivec2 h0 = ivec2(floor(hlo));
-			vec2 f = hlo - vec2(h0);
-			vec4 history = vec4(0.0);
-			float historyWeight = 0.0;
-			for (int i = 0; i < 4; i++) {
-				ivec2 o = ivec2(i & 1, i >> 1);
-				ivec2 c = clamp(h0 + o, ivec2(0), loSize - 1);
-				vec4 v = framemod2 == 0 ? imageLoad(reflWorldAccB_img, c) : imageLoad(reflWorldAccA_img, c);
-				if (v.a < 0.0) continue;
-				vec2 b = mix(1.0 - f, f, vec2(o));
-				history += v * b.x * b.y;
-				historyWeight += b.x * b.y;
-			}
-			if (historyWeight > 1e-3) {
-				history = clamp(history / historyWeight, boxMin, boxMax);
-				result = mix(history, current, 0.07);
-			}
-		}
-	}
-	if (framemod2 == 0) imageStore(reflWorldAccA_img, lo, result);
-	else imageStore(reflWorldAccB_img, lo, result);
-
-	// Coarse copy of the accumulated reflection for rough surfaces: 16 taps on a 2-texel stride span an 8x8 texel
-	// area, and the lighting pass samples it bilinearly, so a rough surface reads as a broad smear of the scene
-	// instead of a mirror. Reading last frame's buffer keeps it clear of the write above.
-	vec4 blurSum = vec4(0.0);
-	float blurWeight = 0.0;
-	for (int i = 0; i < 16; i++) {
-		ivec2 o = (ivec2(i & 3, i >> 2) - 1) * 2;
-		vec4 v = framemod2 == 0 ? imageLoad(reflWorldAccB_img, clamp(lo + o, ivec2(0), loSize - 1))
-		                        : imageLoad(reflWorldAccA_img, clamp(lo + o, ivec2(0), loSize - 1));
-		if (v.a < 0.0) continue;
-		blurSum += v;
-		blurWeight += 1.0;
-	}
-	imageStore(reflWorldBlur_img, lo, blurWeight > 0.0 ? vec4(blurSum.rgb / blurWeight, 1.0) : vec4(0.0, 0.0, 0.0, -1.0));
-#endif
 #if (REFL_PREPASS == 1 && defined REFL_PREPASS_WORLD) || (REFL_PREPASS == 2 && defined REFL_PREPASS_MIRROR)
 	float scale = float(REFL_RES) * 0.01;
 	vec2 screen = vec2(viewWidth, viewHeight);
@@ -167,8 +95,6 @@ void main() {
 			wsrAmbientColor = ambientLightColor;
 			specBehindTranslucent = z0 < z && !hand && texelFetch2D(colortex2, px, 0).a > 0.0;
 
-			// More steps than the full-resolution path: this pass drew the ray's hit/miss speckle, and it can afford them.
-			ssrQualityOverride = float(DEFERRED_SSR_QUALITY) * 2.0;
 			specularReflections(viewPos, feetPlayerPos_normalized, WsunVec, vec3(BN.xy, noiseZ), specularNormal,
 				SpecularTex.r, SpecularTex.g, vec3(0.0), vec3(0.0), vec3(0.0), lightmap.y, hand, vec4(0.0));
 			result = reflPrepassOut;
@@ -187,7 +113,7 @@ void main() {
 			wsrLodScale = float(REFLECTION_RES_MIRROR) * 0.01;
 			wsrSunColor = lightCol.rgb / 2400.0;
 			wsrAmbientColor = averageSkyCol_Clouds / 900.0;
-			result = MirrorEnvironment(viewPosS, surfPos, surfNormal, rayDir, noWSR, BN.y, float(FORWARD_SSR_QUALITY) * 2.0);
+			result = MirrorEnvironment(viewPosS, surfPos, surfNormal, rayDir, noWSR, BN.y, float(FORWARD_SSR_QUALITY));
 			result.a = max(result.a, 0.0);
 		}
 		imageStore(reflMirror_img, lo, result);

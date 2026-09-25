@@ -241,6 +241,18 @@ float convertHandDepth_2(in float depth, bool hand) {
 // Only world0 runs the reflection prepass (REFL_PREPASS_AVAILABLE from its entry files); elsewhere reflections stay inline.
 #if defined REFL_PREPASS_AVAILABLE && defined REFLECTION_PREPASS_ON && defined INCLUDE_BLISS_WSR && defined OVERWORLD_SHADER
 	#define REFL_PREPASS_WORLD
+	// Side of the upsample's tap grid: this is the clarity/smoothness trade, and with it the cost.
+	#if REFLECTION_BLUR == 0
+		#define REFL_BLUR_SIDE 1
+	#elif REFLECTION_BLUR == 25
+		#define REFL_BLUR_SIDE 2
+	#elif REFLECTION_BLUR == 50
+		#define REFL_BLUR_SIDE 3
+	#elif REFLECTION_BLUR == 75
+		#define REFL_BLUR_SIDE 4
+	#else
+		#define REFL_BLUR_SIDE 5
+	#endif
 	#ifdef WSR_DEFER_RESOLVE
 		#define REFL_PREPASS_MIRROR
 	#endif
@@ -248,16 +260,8 @@ float convertHandDepth_2(in float depth, bool hand) {
 		layout(rgba16f) uniform writeonly image2D reflWorld_img;
 	#elif REFL_PREPASS == 2
 		layout(rgba16f) uniform writeonly image2D reflMirror_img;
-	#elif REFL_PREPASS == 3
-		layout(rgba16f) uniform readonly image2D reflWorld_img;
-		// Accumulated block reflections, ping-ponged by framemod2, plus their coarse copy.
-		layout(rgba16f) uniform image2D reflWorldAccA_img;
-		layout(rgba16f) uniform image2D reflWorldAccB_img;
-		layout(rgba16f) uniform writeonly image2D reflWorldBlur_img;
 	#else
-		layout(rgba16f) uniform readonly image2D reflWorldAccA_img;
-		layout(rgba16f) uniform readonly image2D reflWorldAccB_img;
-		layout(rgba16f) uniform readonly image2D reflWorldBlur_img;
+		layout(rgba16f) uniform readonly image2D reflWorld_img;
 		#ifdef REFL_PREPASS_MIRROR
 			layout(rgba16f) uniform readonly image2D reflMirror_img;
 		#endif
@@ -862,87 +866,45 @@ void applyPuddles(
 		#ifdef REFL_PREPASS_MIRROR
 			if (which == 1) return imageLoad(reflMirror_img, c);
 		#endif
-		if (which == 3) return imageLoad(reflWorldBlur_img, c);
-		return framemod2 == 0 ? imageLoad(reflWorldAccA_img, c) : imageLoad(reflWorldAccB_img, c);
+		return imageLoad(reflWorld_img, c);
 	}
 
-	// Weight of one low-res tap for this pixel, 0 = rejected; v receives its value.
-	float ReflTap(int which, ivec2 lo0, ivec2 loMax, vec2 lo, float radius, sampler2D depthTex, float refL, float scale, vec3 refDir, ivec2 o, out vec4 v) {
-		vec2 d = abs(vec2(lo0 + o) - lo);
-		float w = max(1.0 - d.x / radius, 0.0) * max(1.0 - d.y / radius, 0.0);
-		if (w <= 0.0) return 0.0;
-
-		ivec2 c = clamp(lo0 + o, ivec2(0), loMax);
-		v = ReflLoad(which, c);
-		if (v.a < 0.0) return 0.0;
-		ivec2 rep = min(ivec2((vec2(c) + 0.5) / scale), ivec2(viewWidth, viewHeight) - 1);
-		if (abs(ld(texelFetch2D(depthTex, rep, 0).x) - refL) > refL * 0.05 + 1e-4) return 0.0;
-		#ifdef WSR_DEFER_RESOLVE
-			if (which == 1) {
-				vec3 tapDir = WsrOctDecode(unpackSnorm2x16(imageLoad(wsrTrans_img, rep).z));
-				float cosDir = dot(tapDir, refDir);
-				if (cosDir < 0.8) return 0.0;
-				w *= pow(max(cosDir, 0.0), 16.0);
-			}
-		#endif
-		return w;
-	}
-
-	// Depth-aware upsample of a prepass image traced at `scale`; a < 0 when no sample lies on this surface.
-	// blur 0 = bilinear (2x2), 1 = tent over 4x4 low-res texels (rough surfaces: averages the per-sample ray jitter).
-	// refDir (mirrors): taps whose recorded reflection ray differs from this pixel's are down-weighted.
+	// Averages the reduced-resolution reflection over a grid of taps. The grid side comes from REFLECTION_BLUR, so
+	// the cost and the clarity loss are one setting: 1 tap keeps the trace sharp (and cheapest), 5 x 5 blurs the
+	// detail away and hides the sampling noise. Taps whose depth is not this surface are skipped, so a blur never
+	// drags a reflection across a silhouette.
 	vec4 ReflUpsample(int which, float scale, sampler2D depthTex, float refDepth, float blur, vec3 refDir) {
+		#if defined REFL_PREPASS_MIRROR
+			int side = which == 1 ? 2 : REFL_BLUR_SIDE;
+		#else
+			const int side = REFL_BLUR_SIDE;
+		#endif
 		vec2 screen = vec2(viewWidth, viewHeight);
 		ivec2 loMax = ivec2(ceil(screen * scale)) - 1;
 		vec2 lo = gl_FragCoord.xy * scale - 0.5;
 		ivec2 lo0 = ivec2(floor(lo));
-		float radius = 1.0 + blur * 0.75;
+		float halfSpan = float(side - 1) * 0.5;
 		float refL = ld(refDepth);
 
 		vec4 sum = vec4(0.0);
 		float weightSum = 0.0;
-		for (int i = 0; i < 16; i++) {
-			vec4 v;
-			float w = ReflTap(which, lo0, loMax, lo, radius, depthTex, refL, scale, refDir, ivec2(i & 3, i >> 2) - 1, v);
-			if (w <= 0.0) continue;
-			sum += v * (w + 1e-4);
-			weightSum += w + 1e-4;
-		}
-		if (weightSum <= 0.0) return vec4(0.0, 0.0, 0.0, -1.0);
-		vec4 avg = sum / weightSum;
-		if (blur <= 0.02) return avg;
-
-		// Rough surface: mix in the coarse copy of the reflection. Blurring the image, not just its texture detail, is
-		// what makes a rough surface stop reading as a mirror; it stays smooth because the copy is already averaged.
-		float blurMix = clamp(blur * float(REFLECTION_BLUR) * 0.01, 0.0, 1.0);
-		if (blurMix > 0.0) {
-			vec4 blurSum = vec4(0.0);
-			float blurWeight = 0.0;
-			for (int i = 0; i < 4; i++) {
-				ivec2 o = ivec2(i & 1, i >> 1);
-				vec4 v;
-				float w = ReflTap(3, lo0, loMax, lo, 1.5, depthTex, refL, scale, refDir, o - 1, v);
-				if (w <= 0.0) continue;
-				blurSum += v * (w + 1e-4);
-				blurWeight += w + 1e-4;
+		for (int i = 0; i < 25; i++) {
+			if (i >= side * side) break;
+			ivec2 o = ivec2(i % side, i / side);
+			if (side > 2) {
+				// Cheap tapered weight so the far taps at a 5 x 5 do not ring.
+				vec2 d = abs(vec2(o) - halfSpan) / (halfSpan + 0.5);
+				if (max(d.x, d.y) > 0.75) continue;
 			}
-			if (blurWeight > 0.0) avg = mix(avg, blurSum / blurWeight, blurMix);
+			ivec2 c = clamp(lo0 + o - side / 2, ivec2(0), loMax);
+			vec4 v = imageLoad(reflWorld_img, c);
+			if (v.a < 0.0) continue;
+			ivec2 rep = min(ivec2((vec2(c) + 0.5) / scale), ivec2(screen) - 1);
+			if (abs(ld(texelFetch2D(depthTex, rep, 0).x) - refL) > refL * 0.05 + 1e-4) continue;
+			sum += v;
+			weightSum += 1.0;
 		}
-
-		// Rough surface: a ray that caught a light source is far brighter than its neighbours and would flicker as it
-		// moves. Keep taps near the local average, which is what the eye reads as the reflection.
-		vec4 sum2 = vec4(0.0);
-		float weightSum2 = 0.0;
-		for (int i = 0; i < 16; i++) {
-			vec4 v;
-			float w = ReflTap(which, lo0, loMax, lo, radius, depthTex, refL, scale, refDir, ivec2(i & 3, i >> 2) - 1, v);
-			if (w <= 0.0) continue;
-			float diff = dot(abs(v.rgb - avg.rgb), vec3(0.3333));
-			w /= 1.0 + diff * 8.0;
-			sum2 += v * (w + 1e-4);
-			weightSum2 += w + 1e-4;
-		}
-		return weightSum2 > 0.0 ? sum2 / weightSum2 : avg;
+		return weightSum > 0.0 ? sum / weightSum : vec4(0.0, 0.0, 0.0, -1.0);
 	}
 #endif
 
