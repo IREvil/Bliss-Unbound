@@ -174,7 +174,12 @@ vec3 rayTraceSpeculars(vec3 dir, vec3 position, float dither, float quality, boo
 			if(!hand && (spos.x < 0 || spos.x > 1 || spos.y < 0 || spos.y > 1)) return vec3(1.1);
 		#endif
 
-		float sampleDepth = sqrt(texelFetch2D(colortex4, ivec2(spos.xy/texelSize/4.0),0).a/65000.0);
+		// Full-resolution depth on purpose. This used to test the packed 1/4-resolution depth in colortex4, which puts
+		// the hit test on a 4-pixel grid: the hit position then only moves in 4-pixel steps, and on a mirror-like
+		// surface -- wet ground in the rain, polished blocks -- a quantised hit is exactly what reads as a pixelated
+		// reflection. The march runs at the reflection resolution (the prepass already reduces it), so the finer
+		// depth is affordable here; UseQuarterResDepth still selects it for the GI marches.
+		float sampleDepth = linZ(texelFetch2D(depthtex1, ivec2(spos.xy/texelSize),0).r);
 		float sp = invLinZ(sampleDepth);
 
 		if(sp < max(minZ, maxZ) && sp > min(minZ, maxZ)) {
@@ -189,6 +194,25 @@ vec3 rayTraceSpeculars(vec3 dir, vec3 position, float dither, float quality, boo
 
 		reflectionLength += 1.0 / quality;
   	}
+
+	// The march can only report the position of the step it landed in, so even with exact depth a mirror reflection is
+	// sampled on a grid set by the step length. A few sub-steps inside that step, with the same crossing test, find
+	// the real hit and keep a mirror image continuous. Only hit pixels pay for it, and the result is only used when a
+	// sub-step really crosses, so a failure here just keeps the march's own answer.
+	if (hitPos.z <= 1.0 && dot(stepv, stepv) > 0.0) {
+		const int refineSteps = 8;
+		vec3 fineStep = stepv / float(refineSteps);
+		vec3 finePos = spos - stepv;
+		for (int r = 0; r < refineSteps; r++) {
+			vec3 fineNext = finePos + fineStep;
+			float fineSp = invLinZ(linZ(texelFetch2D(depthtex1, ivec2(fineNext.xy/texelSize),0).r));
+			if (fineSp < max(finePos.z, fineNext.z) && fineSp > min(finePos.z, fineNext.z)) {
+				hitPos = vec3(fineNext.xy/RENDER_SCALE, fineSp);
+				break;
+			}
+			finePos = fineNext;
+		}
+	}
 
 
 	#if DEFERRED_SSR_QUALITY == 1
