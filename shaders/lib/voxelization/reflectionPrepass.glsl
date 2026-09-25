@@ -27,6 +27,16 @@ uniform int framemod8;
 	const vec2 workGroupsRender = vec2(1.0, 1.0);
 #endif
 
+// Blocks trace a different pixel of their low-res block each frame (the temporal pass averages them); mirrors keep the centre.
+ivec2 ReflRepPixel(ivec2 lo, float scale, vec2 screen) {
+#if REFL_PREPASS == 2
+vec2 j = vec2(0.5);
+#else
+vec2 j = fract(vec2(0.7548776662, 0.5698402910) * float(frameCounter % 4096) + 0.5);
+#endif
+return min(ivec2((vec2(lo) + j) / scale), ivec2(screen) - 1);
+}
+
 void main() {
 #if REFL_PREPASS == 3 && defined REFL_PREPASS_WORLD
 	// Blend this frame's block reflections with the reprojected history, clamped to the current 3x3 neighbourhood.
@@ -48,7 +58,7 @@ void main() {
 			boxMax = max(boxMax, v);
 		}
 
-		ivec2 px = min(ivec2((vec2(lo) + 0.5) / scale), ivec2(screen) - 1);
+		ivec2 px = ReflRepPixel(lo, scale, screen);
 		#ifdef TAA
 			TAA_Offset = offsets[framemod8];
 		#else
@@ -77,7 +87,7 @@ void main() {
 			}
 			if (historyWeight > 1e-3) {
 				history = clamp(history / historyWeight, boxMin, boxMax);
-				result = mix(history, current, 0.12);
+				result = mix(history, current, 0.1);
 			}
 		}
 	}
@@ -89,7 +99,7 @@ void main() {
 	vec2 screen = vec2(viewWidth, viewHeight);
 	ivec2 lo = ivec2(gl_GlobalInvocationID.xy);
 	if (any(greaterThanEqual(lo, ivec2(ceil(screen * scale))))) return;
-	ivec2 px = min(ivec2((vec2(lo) + 0.5) / scale), ivec2(screen) - 1);
+	ivec2 px = ReflRepPixel(lo, scale, screen);
 	prepassFragCoord = vec4(vec2(px) + 0.5, 0.5, 1.0);
 	vec2 texcoord = prepassFragCoord.xy * texelSize;
 

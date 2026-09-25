@@ -239,7 +239,7 @@ float convertHandDepth_2(in float depth, bool hand) {
 	layout(rgba32ui) uniform readonly uimage2D wsrTrans_img;
 #endif
 // Only world0 runs the reflection prepass (REFL_PREPASS_AVAILABLE from its entry files); elsewhere reflections stay inline.
-#if defined REFL_PREPASS_AVAILABLE && defined INCLUDE_BLISS_WSR && defined OVERWORLD_SHADER
+#if defined REFL_PREPASS_AVAILABLE && defined REFLECTION_PREPASS_ON && defined INCLUDE_BLISS_WSR && defined OVERWORLD_SHADER
 	#define REFL_PREPASS_WORLD
 	#ifdef WSR_DEFER_RESOLVE
 		#define REFL_PREPASS_MIRROR

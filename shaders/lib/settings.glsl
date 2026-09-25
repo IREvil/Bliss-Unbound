@@ -1031,6 +1031,11 @@ const vec3 aerochrome_color = mix(vec3(1.0, 0.0, 0.0), vec3(0.715, 0.303, 0.631)
 // World: opaque blocks and entities. Mirrors: water, glass, ice and other translucents.
 #define REFLECTION_RES_WORLD 25 // [25 50 75 100]
 #define REFLECTION_RES_MIRROR 50 // [25 50 75 100]
+// Off traces all reflections at full resolution inside the lighting pass (the resolution sliders then do nothing).
+#define REFLECTION_PREPASS
+#ifdef REFLECTION_PREPASS
+    #define REFLECTION_PREPASS_ON
+#endif
 // Brightness of world reflections (percent) by day and by night. Other dimensions use the day value.
 #define WSR_DAY_STRENGTH 70 // [30 40 50 60 70 80 90 100 110 120 130 140 150]
 #define WSR_NIGHT_STRENGTH 125 // [50 75 100 110 120 125 130 140 150 175 200 250 300]
