@@ -9,6 +9,10 @@ Each preset is an Iris options file (NAME=value per line). The script:
 
 Options that must stay independent of presets (INDEPENDENT) are ignored.
 
+A preset can also leave a single option alone by writing `!NAME` instead of `NAME=value`
+(the line survives a rewrite, and the option is left out of that preset's profile line, so
+switching to it keeps whatever the user had).
+
 Usage:
     py tools/presets.py <pack>/shaders [--presets=presets] [--default=Medium] [--check]
 """
@@ -18,21 +22,26 @@ import sys
 
 INDEPENDENT = {"sun_illuminance", "moon_illuminance", "TONEMAP", "TONEMAP_MOOD"}
 # Order the presets appear in the shader options menu. Names not listed follow, alphabetically.
-PRESET_ORDER = ["Bliss Default", "Medium", "High", "Ultra", "Ultra Plus"]
+PRESET_ORDER = ["Bliss Default", "Low", "Medium", "High", "Ultra", "Ultra Plus"]
 DEFINE_RE = r"^(?P<indent>[ \t]*)(?P<lead>(?://[ \t]*)?)#[ \t]*define[ \t]+%s\b(?P<rest>[^\n]*)$"
 BEGIN = "# BEGIN generated profiles (tools/presets.py)"
 END = "# END generated profiles"
 
 
 def parse_options(path):
-    out = {}
+    """(values, ignored): `NAME=value` lines, plus `!NAME` lines this preset leaves alone."""
+    values, ignored = {}, set()
     for line in open(path, encoding="utf-8"):
         line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("!"):
+            ignored.add(line[1:].strip())
+        elif "=" in line:
             k, v = line.split("=", 1)
             if k.strip() not in INDEPENDENT:
-                out[k.strip()] = v.strip()
-    return out
+                values[k.strip()] = v.strip()
+    return values, ignored
 
 
 def option_files(shaders):
@@ -93,18 +102,18 @@ def main():
     default_name = flags.get("default", "Medium")
     check = "check" in flags
 
-    presets = {}
+    presets, skipped = {}, {}
     rank = {name.lower(): i for i, name in enumerate(PRESET_ORDER)}
     found = [f[:-4] for f in os.listdir(preset_dir) if f.lower().endswith(".txt")]
     found.sort(key=lambda n: (rank.get(n.lower(), len(rank)), n.lower()))
     for name in found:
-        presets[name] = parse_options(os.path.join(preset_dir, name + ".txt"))
+        presets[name], skipped[name] = parse_options(os.path.join(preset_dir, name + ".txt"))
     if default_name not in presets:
         print("default preset %r not found in %s" % (default_name, preset_dir))
         return 1
 
     files = option_files(shaders)
-    names = sorted(set().union(*presets.values()), key=str.lower)
+    names = sorted(set().union(*presets.values(), *skipped.values()), key=str.lower)
     defaults, where = {}, {}
     for n in names:
         found = find_define(files, n)
@@ -114,13 +123,13 @@ def main():
         where[n] = found[0]
         defaults[n] = current_value(found[1])
 
-    # 1. complete every preset
+    # 1. complete every preset (options it ignores stay out of both the file's values and its profile line)
     for p, opts in presets.items():
-        full = {n: opts.get(n, defaults[n]) for n in names}
+        full = {n: opts.get(n, defaults[n]) for n in names if n not in skipped[p]}
         presets[p] = full
         if not check:
             with open(os.path.join(preset_dir, p + ".txt"), "w", encoding="utf-8", newline="\n") as fh:
-                fh.writelines("%s=%s\n" % (n, full[n]) for n in names)
+                fh.writelines("%s=%s\n" % (n, full[n]) if n in full else "!%s\n" % n for n in names)
 
     # 2. profile lines
     lines = [BEGIN]

@@ -3,6 +3,7 @@ option.SHADER_VERSION_LABEL = Bliss Unbound
 
 # Presets, generated from presets/*.txt by tools/presets.py
 profile.BLISS_DEFAULT = Bliss Default
+profile.LOW = Low
 profile.MEDIUM = Medium
 profile.HIGH = High
 profile.ULTRA = Ultra
