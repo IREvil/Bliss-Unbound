@@ -1603,7 +1603,7 @@ void main() {
 					// Mirrors keep the trace (their cone is a ray); anything with a real cone takes the spread, which is
 					// most solid blocks, leaving the exact trace to the near-mirrors. The ramp is short on purpose: a
 					// partly sharp reflection still reads as a mirror, which is what made higher resolutions look wrong.
-					float reflBlurMix = smoothstep(0.04, 0.20, reflRough);
+					float reflBlurMix = smoothstep(0.03, 0.12, reflRough);
 					vec4 reflSoft = ReflUpsample(2, REFL_BLUR_SCALE, depthtex1, z, reflRough, vec3(0.0));
 					vec4 reflValue;
 					if (reflSoft.a >= 0.0 && reflBlurMix >= 0.999) {

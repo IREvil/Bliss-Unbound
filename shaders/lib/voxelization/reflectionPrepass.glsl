@@ -100,6 +100,12 @@ void main() {
 			vec3 specularNormal = dot(FlatNormals, feetPlayerPos_normalized) > 0.0 ? FlatNormals : normal;
 
 			wsrLodScale = float(REFLECTION_RES_WORLD) * 0.01;
+			#ifdef REFL_BLUR_AVAILABLE
+				// The block reflection's character comes from the blur grid, not the trace grid, so its hit texture is
+				// sampled as blurrily at every resolution setting as it is at the coarsest one. That is a large part of
+				// why 25% looked more matte than 50%.
+				wsrLodScale = REFL_BLUR_SCALE;
+			#endif
 			wsrSunColor = directLightColor;
 			wsrAmbientColor = ambientLightColor;
 			specBehindTranslucent = z0 < z && !hand && texelFetch2D(colortex2, px, 0).a > 0.0;
@@ -139,11 +145,16 @@ void main() {
 	// The roughness blur: the surface's cone spreads its reflection, and this is where those samples come from. It
 	// runs on a FIXED fraction of the screen (REFL_BLUR_SCALE) rather than the trace's resolution, because that
 	// coarse, mosaic-like grid is what gives a rough reflection its character -- at the trace's resolution a 50%-plus
-	// trace is sharp enough that the same blur just looks like a soft mirror. The trace may be finer than this grid;
-	// each coarse texel then reads the trace texel under it, so the cost does not grow with the resolution setting.
+	// trace is sharp enough that the same blur just looks like a soft mirror.
+	//
+	// The trace may be finer than this grid, and then the extra detail has to be AVERAGED away, not thrown away: a
+	// single subsampled texel per coarse cell keeps the fine high-frequency detail (aliasing), and that is what still
+	// reads as glossy at higher resolutions. So the horizontal pass averages the block under each coarse tap (up to
+	// 2 x 2 samples, which is all the softening needs) and the vertical pass then blurs the coarse rows.
+	//
 	// Taps step one coarse texel at a time (dense, so the average cannot sparkle), the kernel carries a tight core
-	// plus a broad wash, and taps whose depth is not this surface are dropped, which keeps the blur on the
-	// reflecting plane and stops it dragging a reflection across a silhouette.
+	// plus a broad wash, and taps whose depth is not this surface are dropped, which keeps the blur on the reflecting
+	// plane and stops it dragging a reflection across a silhouette.
 	vec2 screen = vec2(viewWidth, viewHeight);
 	float scale = float(REFL_RES) * 0.01;
 	ivec2 lc = ivec2(gl_GlobalInvocationID.xy);
@@ -153,10 +164,15 @@ void main() {
 
 	// Width in coarse texels, capped so the two passes stay bounded: this is the only place the blur is paid for.
 	int w = clamp(int(round(REFL_BLUR_PX * REFL_BLUR_SCALE)), 1, 16);
-	// Trace texels per coarse texel (1, 2, 3 or 4 depending on the resolution setting).
+	// Trace texels per coarse texel (1, 2, 3 or 4 depending on the resolution setting), and the samples taken inside
+	// one of those blocks.
 	vec2 s = vec2(scale / REFL_BLUR_SCALE);
-	ivec2 thisTrace = clamp(ivec2(vec2(lc) * s), ivec2(0), traceMax);
-	ivec2 thisPx = min(ivec2((vec2(thisTrace) + 0.5) / scale), ivec2(screen) - 1);
+	int avgN = min(int(s.x + 0.5), 2);
+	vec2 avgStep = s / float(avgN);
+	// Centre of this cell, in trace texels and in framebuffer pixels.
+	vec2 hereCentre = (vec2(lc) + 0.5) * s;
+	ivec2 thisTrace = clamp(ivec2(hereCentre), ivec2(0), traceMax);
+	ivec2 thisPx = min(ivec2(hereCentre / scale), ivec2(screen) - 1);
 	float refL = ld(texelFetch2D(depthtex1, thisPx, 0).x);
 
 	vec4 sum = vec4(0.0);
@@ -169,19 +185,37 @@ void main() {
 			ivec2 cc = lc + ivec2(0, i);
 		#endif
 		cc = clamp(cc, ivec2(0), lcMax);
+		// The tap's own framebuffer pixel, used for the depth test on both passes.
+		#if REFL_PREPASS == 3
+			vec2 tapCentre = (vec2(cc) + 0.5) * s;
+		#else
+			vec2 tapCentre = (vec2(cc) + 0.5) / REFL_BLUR_SCALE * scale;
+		#endif
+		ivec2 rep = min(ivec2(tapCentre / scale), ivec2(screen) - 1);
+		if (abs(ld(texelFetch2D(depthtex1, rep, 0).x) - refL) > refL * 0.05 + 1e-4) continue;
 		vec4 v;
 		#if REFL_PREPASS == 3
-			// The trace holds the finer image: read the texel this coarse tap stands for.
-			ivec2 tc = clamp(ivec2(vec2(cc) * s), ivec2(0), traceMax);
-			v = imageLoad(reflWorld_img, tc);
+			// Average the trace block this coarse tap stands for, so the finer trace's detail is softened rather than
+			// subsampled into the coarse image.
+			vec4 blockSum = vec4(0.0);
+			float blockWeight = 0.0;
+			for (int a = 0; a < 2; a++) {
+				for (int b = 0; b < 2; b++) {
+					if (a >= avgN || b >= avgN) continue;
+					vec2 off = (vec2(float(a), float(b)) - float(avgN - 1) * 0.5) * avgStep;
+					vec4 blockTexel = imageLoad(reflWorld_img, clamp(ivec2(tapCentre + off), ivec2(0), traceMax));
+					if (blockTexel.a < 0.0) continue;
+					blockSum += blockTexel;
+					blockWeight += 1.0;
+				}
+			}
+			if (blockWeight <= 0.0) continue;
+			v = blockSum / blockWeight;
 		#else
 			// The vertical pass reads the horizontal pass' result, which is already on the coarse grid.
-			ivec2 tc = cc;
 			v = imageLoad(reflWorldBlurTmp_img, cc);
+			if (v.a < 0.0) continue;
 		#endif
-		ivec2 rep = min(ivec2((vec2(tc) + 0.5) / scale), ivec2(screen) - 1);
-		if (abs(ld(texelFetch2D(depthtex1, rep, 0).x) - refL) > refL * 0.05 + 1e-4) continue;
-		if (v.a < 0.0) continue;
 		// Two scales in one kernel. A rough surface does not see a smeared copy of one object: it sees a tight core
 		// around the mirror direction plus a broad wash of everything else the cone covers, and the wash is what
 		// makes it read as rough. A single gaussian only ever gives the first of those.
