@@ -1622,11 +1622,18 @@ void main() {
 					// Mirrors keep the trace (their cone is a ray); a polished surface gets a little of the blur as a
 					// broad halo, and anything genuinely rough gets all of it. If the soft copy has nothing for this
 					// pixel the trace is used instead, so the blur can only soften a reflection, never remove it.
-					float reflBlurMix = smoothstep(0.15, 0.6, reflRough);
+					float reflBlurMix = smoothstep(0.12, 0.55, reflRough);
 					vec4 reflSharp = ReflUpsample(0, reflScale, depthtex1, z, reflRough, vec3(0.0));
 					vec4 reflSoft = ReflUpsample(2, reflScale, depthtex1, z, reflRough, vec3(0.0));
 					if (reflSoft.a < 0.0) reflSoft = reflSharp;
 					reflWorldFetched = mix(reflSharp, reflSoft, reflBlurMix);
+					// A cone average is much dimmer than the mirror sample it replaces, and the blur only covers part of
+					// the cone, so its peak is still far too high. Dim what a rough surface takes by how much of the
+					// blurred copy it uses; scaling the coverage too keeps the surface's own shading rather than
+					// darkening it. Mirrors keep the trace and are untouched.
+					float reflDim = mix(1.0, float(ROUGH_REFLECTION_STRENGTH) * 0.01, reflBlurMix);
+					reflWorldFetched.rgb *= reflDim;
+					reflWorldFetched.a *= reflDim;
 				#else
 					reflWorldFetched = ReflUpsample(0, reflScale, depthtex1, z, reflRough, vec3(0.0));
 				#endif

@@ -1039,6 +1039,11 @@ const vec3 aerochrome_color = mix(vec3(1.0, 0.0, 0.0), vec3(0.715, 0.303, 0.631)
 // sharp and rough surfaces stop reading as mirrors. The width is converted to reduced texels per pass, so it looks
 // the same at every resolution setting. 0 turns the passes off and keeps every reflection on its exact ray.
 #define REFLECTION_BLUR 50 // [0 25 50 75 100]
+// How much brightness a rough reflection keeps (percent). The blur runs on the reduced grid, so it can only average
+// a fraction of the cone a rough surface really sees and its peak stays far higher than a full-resolution cone
+// average would. Without this, the reflection of a bright block (a fireplace, an emissive ore) reads as an
+// overblown patch where the full-resolution path is barely noticeable. Mirrors are not affected.
+#define ROUGH_REFLECTION_STRENGTH 65 // [0 25 40 50 60 65 70 80 90 100]
 // Off traces all reflections at full resolution inside the lighting pass (the resolution sliders then do nothing).
 #define REFLECTION_PREPASS
 #ifdef REFLECTION_PREPASS
