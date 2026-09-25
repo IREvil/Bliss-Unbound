@@ -27,19 +27,10 @@ uniform int framemod8;
 	const vec2 workGroupsRender = vec2(1.0, 1.0);
 #endif
 
-// Blocks trace a different pixel of their low-res block each frame (the temporal pass averages them); mirrors keep the centre.
-ivec2 ReflRepPixel(ivec2 lo, float scale, vec2 screen) {
-#if REFL_PREPASS == 2
-vec2 j = vec2(0.5);
-#else
-vec2 j = fract(vec2(0.7548776662, 0.5698402910) * float(frameCounter % 4096) + 0.5);
-#endif
-return min(ivec2((vec2(lo) + j) / scale), ivec2(screen) - 1);
-}
-
 void main() {
 #if REFL_PREPASS == 3 && defined REFL_PREPASS_WORLD
-	// Blend this frame's block reflections with the reprojected history, clamped to the current 3x3 neighbourhood.
+	// Blend this frame's block reflections with the reprojected history, clamped to the current 5x5 neighbourhood.
+	// The wide box keeps the history usable on smooth gradients (a tight one rejects it and the raw noise shows).
 	float scale = float(REFL_RES) * 0.01;
 	vec2 screen = vec2(viewWidth, viewHeight);
 	ivec2 loSize = ivec2(ceil(screen * scale));
@@ -51,14 +42,14 @@ void main() {
 	if (current.a >= 0.0) {
 		vec4 boxMin = current;
 		vec4 boxMax = current;
-		for (int i = 0; i < 9; i++) {
-			vec4 v = imageLoad(reflWorld_img, clamp(lo + ivec2(i % 3, i / 3) - 1, ivec2(0), loSize - 1));
+		for (int i = 0; i < 25; i++) {
+			vec4 v = imageLoad(reflWorld_img, clamp(lo + ivec2(i % 5, i / 5) - 2, ivec2(0), loSize - 1));
 			if (v.a < 0.0) continue;
 			boxMin = min(boxMin, v);
 			boxMax = max(boxMax, v);
 		}
 
-		ivec2 px = ReflRepPixel(lo, scale, screen);
+		ivec2 px = min(ivec2((vec2(lo) + 0.5) / scale), ivec2(screen) - 1);
 		#ifdef TAA
 			TAA_Offset = offsets[framemod8];
 		#else
@@ -87,7 +78,7 @@ void main() {
 			}
 			if (historyWeight > 1e-3) {
 				history = clamp(history / historyWeight, boxMin, boxMax);
-				result = mix(history, current, 0.1);
+				result = mix(history, current, 0.07);
 			}
 		}
 	}
@@ -99,7 +90,7 @@ void main() {
 	vec2 screen = vec2(viewWidth, viewHeight);
 	ivec2 lo = ivec2(gl_GlobalInvocationID.xy);
 	if (any(greaterThanEqual(lo, ivec2(ceil(screen * scale))))) return;
-	ivec2 px = ReflRepPixel(lo, scale, screen);
+	ivec2 px = min(ivec2((vec2(lo) + 0.5) / scale), ivec2(screen) - 1);
 	prepassFragCoord = vec4(vec2(px) + 0.5, 0.5, 1.0);
 	vec2 texcoord = prepassFragCoord.xy * texelSize;
 
@@ -127,15 +118,11 @@ void main() {
 	wsrSunDir = WsunVec;
 	wsrDayFactor = clamp((unsigned_WsunVec.y + 0.05) / 0.15, 0.0, 1.0);
 
-	#ifdef TAA
-		int seed = (frameCounter * 5) % 40000;
-	#else
-		int seed = 600;
-	#endif
-	// Blue noise indexed by the LOW-res texel: sampling it at the full-res pixel stride would turn it into white noise,
-	// which the upsample cannot filter.
-	vec2 BN = fract(R2_samples(seed).xy + blueNoise(vec2(lo)).rg);
-	float noiseZ = fract(texelFetch2D(noisetex, lo % 512, 0).a + 1.0 / 1.6180339887 * float(frameCounter % 1000));
+	// Per-frame dithering here flickers: the trace must be identical frame to frame for a still camera.
+	// Blue noise per low-res texel gives the spatial spread, and TAA's sub-pixel jitter (TAA_Offset) is the
+	// frame-to-frame variation the accumulation averages into a supersampled trace.
+	vec2 BN = fract(R2_samples(0).xy + blueNoise(vec2(lo)).rg);
+	float noiseZ = texelFetch2D(noisetex, lo % 512, 0).a;
 
 	float z0 = texelFetch2D(depthtex0, px, 0).x;
 	vec4 result = vec4(0.0, 0.0, 0.0, -1.0);

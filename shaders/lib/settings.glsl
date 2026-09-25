@@ -1201,7 +1201,9 @@ const vec3 aerochrome_color = mix(vec3(1.0, 0.0, 0.0), vec3(0.715, 0.303, 0.631)
 #define debug_TANGENT 24
 #define debug_ACT 25
 #define debug_WSR 26
-#define DEBUG_VIEW debug_OFF // [debug_OFF debug_SHADOWMAP debug_NORMALS debug_SPECULAR debug_INDIRECT debug_DIRECT debug_VIEW_POSITION debug_DH_WATER_BLENDING debug_FILTERED_STUFF debug_DEPTHTEX0 debug_DEPTHTEX1 debug_MATERIAL_SSS debug_MATERIAL_EMISSION debug_LIGHTMAPS debug_FORWARD_RENDERING debug_FORWARD_COLOR_TINT debug_DEFERRED_RENDERING debug_MATERIAL_ID debug_SMOOTHNESS debug_IPBR_EMISSION debug_TRANSLUCENT debug_GENERATED_NORMALS debug_SPRITE_SIZE debug_TEXTURE_GRADIENT debug_TANGENT debug_ACT debug_WSR]
+// Shows only the environment reflection (overworld, world0): 4x over grey where there is none, magenta where the reduced-resolution pass is off.
+#define debug_REFL 27
+#define DEBUG_VIEW debug_OFF // [debug_OFF debug_SHADOWMAP debug_NORMALS debug_SPECULAR debug_INDIRECT debug_DIRECT debug_VIEW_POSITION debug_DH_WATER_BLENDING debug_FILTERED_STUFF debug_DEPTHTEX0 debug_DEPTHTEX1 debug_MATERIAL_SSS debug_MATERIAL_EMISSION debug_LIGHTMAPS debug_FORWARD_RENDERING debug_FORWARD_COLOR_TINT debug_DEFERRED_RENDERING debug_MATERIAL_ID debug_SMOOTHNESS debug_IPBR_EMISSION debug_TRANSLUCENT debug_GENERATED_NORMALS debug_SPRITE_SIZE debug_TEXTURE_GRADIENT debug_TANGENT debug_ACT debug_WSR debug_REFL]
 // #define ISOLATE_RESOURCEPACK_SKY
 
 #if DEBUG_VIEW == debug_DEPTHTEX0 || DEBUG_VIEW == debug_DEPTHTEX1

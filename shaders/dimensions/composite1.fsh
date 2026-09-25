@@ -1561,6 +1561,13 @@ void main() {
 		#endif
 
 		gl_FragData[0].rgb = FINAL_COLOR;
+		#if defined REFL_PREPASS_WORLD && defined DEFERRED_SPECULAR
+			// Reflection buffer on its own, so its stability can be judged apart from the highlight.
+			if (DEBUG_VIEW == debug_REFL && hideGUI == 0)
+				gl_FragData[0].rgb = reflWorldFetched.a < 0.0 ? vec3(0.5) : reflWorldFetched.rgb * 4.0;
+		#elif defined REFLECTION_PREPASS_ON && defined OVERWORLD_SHADER && defined INCLUDE_BLISS_WSR
+			if (DEBUG_VIEW == debug_REFL && hideGUI == 0) gl_FragData[0].rgb = vec3(1.0, 0.0, 1.0);
+		#endif
 
 	}else{
 		vec3 Background = vec3(0.0);
@@ -1789,7 +1796,7 @@ void main() {
 					wsrSunColor = lightCol.rgb / 2400.0;
 					wsrAmbientColor = averageSkyCol_Clouds / 900.0;
 					wsrSunDir = WsunVec;
-					env = MirrorEnvironment(viewPosS, surfPos, surfNormal, rayDir, baseBW.y < 0.0, noise);
+					env = MirrorEnvironment(viewPosS, surfPos, surfNormal, rayDir, baseBW.y < 0.0, blueNoise(vec2(gl_FragCoord.xy)).g);
 				}
 				translucentOut.rgb += abs(baseBW.y) * env.a * (env.rgb - base) * 0.1;
 				#if DEBUG_VIEW == debug_WSR
