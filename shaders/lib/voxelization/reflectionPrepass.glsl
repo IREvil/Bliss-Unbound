@@ -151,6 +151,8 @@ void main() {
 			wsrAmbientColor = ambientLightColor;
 			specBehindTranslucent = z0 < z && !hand && texelFetch2D(colortex2, px, 0).a > 0.0;
 
+			// More steps than the full-resolution path: this pass drew the ray's hit/miss speckle, and it can afford them.
+			ssrQualityOverride = float(DEFERRED_SSR_QUALITY) * 2.0;
 			specularReflections(viewPos, feetPlayerPos_normalized, WsunVec, vec3(BN.xy, noiseZ), specularNormal,
 				SpecularTex.r, SpecularTex.g, vec3(0.0), vec3(0.0), vec3(0.0), lightmap.y, hand, vec4(0.0));
 			result = reflPrepassOut;
@@ -168,7 +170,7 @@ void main() {
 
 			wsrSunColor = lightCol.rgb / 2400.0;
 			wsrAmbientColor = averageSkyCol_Clouds / 900.0;
-			result = MirrorEnvironment(viewPosS, surfPos, surfNormal, rayDir, noWSR, BN.y);
+			result = MirrorEnvironment(viewPosS, surfPos, surfNormal, rayDir, noWSR, BN.y, float(FORWARD_SSR_QUALITY) * 2.0);
 			result.a = max(result.a, 0.0);
 		}
 		imageStore(reflMirror_img, lo, result);

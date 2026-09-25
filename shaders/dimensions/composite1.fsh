@@ -863,6 +863,28 @@ void applyPuddles(
 		return framemod2 == 0 ? imageLoad(reflWorldAccA_img, c) : imageLoad(reflWorldAccB_img, c);
 	}
 
+	// Weight of one low-res tap for this pixel, 0 = rejected; v receives its value.
+	float ReflTap(int which, ivec2 lo0, ivec2 loMax, vec2 lo, float radius, sampler2D depthTex, float refL, float scale, vec3 refDir, ivec2 o, out vec4 v) {
+		vec2 d = abs(vec2(lo0 + o) - lo);
+		float w = max(1.0 - d.x / radius, 0.0) * max(1.0 - d.y / radius, 0.0);
+		if (w <= 0.0) return 0.0;
+
+		ivec2 c = clamp(lo0 + o, ivec2(0), loMax);
+		v = ReflLoad(which, c);
+		if (v.a < 0.0) return 0.0;
+		ivec2 rep = min(ivec2((vec2(c) + 0.5) / scale), ivec2(viewWidth, viewHeight) - 1);
+		if (abs(ld(texelFetch2D(depthTex, rep, 0).x) - refL) > refL * 0.05 + 1e-4) return 0.0;
+		#ifdef WSR_DEFER_RESOLVE
+			if (which == 1) {
+				vec3 tapDir = WsrOctDecode(unpackSnorm2x16(imageLoad(wsrTrans_img, rep).z));
+				float cosDir = dot(tapDir, refDir);
+				if (cosDir < 0.8) return 0.0;
+				w *= pow(max(cosDir, 0.0), 16.0);
+			}
+		#endif
+		return w;
+	}
+
 	// Depth-aware upsample of a prepass image traced at `scale`; a < 0 when no sample lies on this surface.
 	// blur 0 = bilinear (2x2), 1 = tent over 4x4 low-res texels (rough surfaces: averages the per-sample ray jitter).
 	// refDir (mirrors): taps whose recorded reflection ray differs from this pixel's are down-weighted.
@@ -871,35 +893,36 @@ void applyPuddles(
 		ivec2 loMax = ivec2(ceil(screen * scale)) - 1;
 		vec2 lo = gl_FragCoord.xy * scale - 0.5;
 		ivec2 lo0 = ivec2(floor(lo));
-		float radius = 1.0 + blur * 0.5;
+		float radius = 1.0 + blur * 0.75;
 		float refL = ld(refDepth);
 
 		vec4 sum = vec4(0.0);
 		float weightSum = 0.0;
 		for (int i = 0; i < 16; i++) {
-			ivec2 o = ivec2(i & 3, i >> 2) - 1;
-			vec2 d = abs(vec2(lo0 + o) - lo);
-			float w = max(1.0 - d.x / radius, 0.0) * max(1.0 - d.y / radius, 0.0);
+			vec4 v;
+			float w = ReflTap(which, lo0, loMax, lo, radius, depthTex, refL, scale, refDir, ivec2(i & 3, i >> 2) - 1, v);
 			if (w <= 0.0) continue;
-
-			ivec2 c = clamp(lo0 + o, ivec2(0), loMax);
-			vec4 v = ReflLoad(which, c);
-			if (v.a < 0.0) continue;
-			ivec2 rep = min(ivec2((vec2(c) + 0.5) / scale), ivec2(screen) - 1);
-			if (abs(ld(texelFetch2D(depthTex, rep, 0).x) - refL) > refL * 0.05 + 1e-4) continue;
-			#ifdef WSR_DEFER_RESOLVE
-				if (which == 1) {
-					vec3 tapDir = WsrOctDecode(unpackSnorm2x16(imageLoad(wsrTrans_img, rep).z));
-					float cosDir = dot(tapDir, refDir);
-					if (cosDir < 0.8) continue;
-					w *= pow(max(cosDir, 0.0), 16.0);
-				}
-			#endif
-			w += 1e-4;
-			sum += v * w;
-			weightSum += w;
+			sum += v * (w + 1e-4);
+			weightSum += w + 1e-4;
 		}
-		return weightSum > 0.0 ? sum / weightSum : vec4(0.0, 0.0, 0.0, -1.0);
+		if (weightSum <= 0.0) return vec4(0.0, 0.0, 0.0, -1.0);
+		vec4 avg = sum / weightSum;
+		if (blur <= 0.02) return avg;
+
+		// Rough surface: a ray that caught a light source is far brighter than its neighbours and would flicker as it
+		// moves. Keep taps near the local average, which is what the eye reads as the reflection.
+		vec4 sum2 = vec4(0.0);
+		float weightSum2 = 0.0;
+		for (int i = 0; i < 16; i++) {
+			vec4 v;
+			float w = ReflTap(which, lo0, loMax, lo, radius, depthTex, refL, scale, refDir, ivec2(i & 3, i >> 2) - 1, v);
+			if (w <= 0.0) continue;
+			float diff = dot(abs(v.rgb - avg.rgb), vec3(0.3333));
+			w /= 1.0 + diff * 8.0;
+			sum2 += v * (w + 1e-4);
+			weightSum2 += w + 1e-4;
+		}
+		return weightSum2 > 0.0 ? sum2 / weightSum2 : avg;
 	}
 #endif
 
@@ -1796,7 +1819,7 @@ void main() {
 					wsrSunColor = lightCol.rgb / 2400.0;
 					wsrAmbientColor = averageSkyCol_Clouds / 900.0;
 					wsrSunDir = WsunVec;
-					env = MirrorEnvironment(viewPosS, surfPos, surfNormal, rayDir, baseBW.y < 0.0, blueNoise(vec2(gl_FragCoord.xy)).g);
+					env = MirrorEnvironment(viewPosS, surfPos, surfNormal, rayDir, baseBW.y < 0.0, blueNoise(vec2(gl_FragCoord.xy)).g, float(FORWARD_SSR_QUALITY));
 				}
 				translucentOut.rgb += abs(baseBW.y) * env.a * (env.rgb - base) * 0.1;
 				#if DEBUG_VIEW == debug_WSR
