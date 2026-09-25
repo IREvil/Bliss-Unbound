@@ -147,6 +147,7 @@ void main() {
 			vec3 feetPlayerPos_normalized = normalize(mat3(gbufferModelViewInverse) * viewPos);
 			vec3 specularNormal = dot(FlatNormals, feetPlayerPos_normalized) > 0.0 ? FlatNormals : normal;
 
+			wsrLodScale = float(REFLECTION_RES_WORLD) * 0.01;
 			wsrSunColor = directLightColor;
 			wsrAmbientColor = ambientLightColor;
 			specBehindTranslucent = z0 < z && !hand && texelFetch2D(colortex2, px, 0).a > 0.0;
@@ -168,6 +169,7 @@ void main() {
 			vec3 viewDir = normalize(surfPos - gbufferModelViewInverse[3].xyz);
 			vec3 surfNormal = normalize(rayDir - viewDir);
 
+			wsrLodScale = float(REFLECTION_RES_MIRROR) * 0.01;
 			wsrSunColor = lightCol.rgb / 2400.0;
 			wsrAmbientColor = averageSkyCol_Clouds / 900.0;
 			result = MirrorEnvironment(viewPosS, surfPos, surfNormal, rayDir, noWSR, BN.y, float(FORWARD_SSR_QUALITY) * 2.0);

@@ -1031,6 +1031,8 @@ const vec3 aerochrome_color = mix(vec3(1.0, 0.0, 0.0), vec3(0.715, 0.303, 0.631)
 // World: opaque blocks and entities. Mirrors: water, glass, ice and other translucents.
 #define REFLECTION_RES_WORLD 25 // [25 50 75 100]
 #define REFLECTION_RES_MIRROR 50 // [25 50 75 100]
+// Reflection detail blur, in percent. 100 is Complementary's model; 0 keeps reflections mirror-sharp, higher softens them.
+#define REFLECTION_BLUR 100 // [0 25 50 75 100 150 200 300]
 // Off traces all reflections at full resolution inside the lighting pass (the resolution sliders then do nothing).
 #define REFLECTION_PREPASS
 #ifdef REFLECTION_PREPASS

@@ -1565,6 +1565,7 @@ void main() {
 			if (dot(FlatNormals, (feetPlayerPos_normalized)) > 0.0) specularNormal = FlatNormals;
 
 			#ifdef INCLUDE_BLISS_WSR
+					wsrLodScale = float(REFLECTION_RES_WORLD) * 0.01;
 				wsrSunColor = DirectLightColor;
 				wsrAmbientColor = AmbientLightColor;
 				wsrSunDir = WsunVec;
@@ -1816,6 +1817,7 @@ void main() {
 					vec3 viewDir = normalize(surfPos - gbufferModelViewInverse[3].xyz);
 					vec3 surfNormal = normalize(rayDir - viewDir);
 
+					wsrLodScale = float(REFLECTION_RES_MIRROR) * 0.01;
 					wsrSunColor = lightCol.rgb / 2400.0;
 					wsrAmbientColor = averageSkyCol_Clouds / 900.0;
 					wsrSunDir = WsunVec;

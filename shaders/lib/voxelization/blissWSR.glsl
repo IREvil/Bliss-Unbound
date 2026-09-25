@@ -20,6 +20,8 @@ vec3 wsrSunDir = vec3(0.0, 1.0, 0.0);
 float wsrDayFactor = 1.0;
 // Distance along the ray of the last WSR hit, -1 on a miss.
 float wsrHitDist = -1.0;
+// The reflection pass' resolution scale (1 = full), for the hit texture's LOD.
+float wsrLodScale = 1.0;
 // The deferred translucent resolve turns this off: the water pass already traced the player against SSR.
 bool wsrTracePlayer = true;
 
@@ -66,14 +68,22 @@ float WsrSunShadow(vec3 playerPos, vec3 normal) {
     #endif
 }
 
-vec4 WsrShade(ivec3 voxelPos, vec3 playerPos, vec3 normal) {
+vec4 WsrShade(ivec3 voxelPos, vec3 playerPos, vec3 normal, vec3 rayStart, vec3 rayDir) {
     faceData face = getFaceData(voxelPos, normal);
     if (face.textureBounds.z < 1e-6) return vec4(-1.0);
 
     vec2 localTexCoord = WsrLocalTexCoord(fract(playerPos + cameraPositionBestFract), normal);
     vec2 atlas = vec2(textureSize(textureAtlas, 0));
     vec2 textureRad = face.textureBounds.z * vec2(1.0, atlas.x / atlas.y);
-    vec4 color = texture2DLod(textureAtlas, face.textureBounds.xy + 2.0 * textureRad * localTexCoord, 0.0);
+
+    // Complementary blurs the hit texture by how large it projects on screen (worldSpaceRef.glsl): the further the
+    // reflection travelled, the softer it reads. That is what makes a rough surface look rough now that the ray
+    // itself is exact, so without it every reflection came out mirror-sharp.
+    float virtualDist = length(playerPos - rayStart) + length(rayStart);
+    float textureFactor = length(textureRad * atlas) * 3.0;
+    float lod = 0.5 * log2(max(virtualDist * textureFactor / gbufferProjection[0][0] / max(abs(dot(normal, rayDir)), 0.05) / (1.0 / texelSize.y) / wsrLodScale, 1e-6));
+    lod *= REFLECTION_BLUR * 0.01;
+    vec4 color = texture2DLod(textureAtlas, face.textureBounds.xy + 2.0 * textureRad * localTexCoord, max(lod, 0.0));
     if (color.a < 0.0041) return vec4(-1.0);
 
     vec3 albedo = toLinear(color.rgb * face.glColor);
@@ -152,7 +162,7 @@ vec4 WsrTrace(vec3 playerPos, vec3 voxelPos, vec3 rayDir) {
                     vec3 normal = -stepAxis * stepDir;
                     vec3 intersection = playerPos + (traceLength - 0.001) * rayDir;
 
-                    vec4 reflection = WsrShade(ivec3(voxelPosRT0), intersection, normal);
+                    vec4 reflection = WsrShade(ivec3(voxelPosRT0), intersection, normal, playerPos, rayDir);
                     if (reflection.a > -0.5) {
                         wsrHitDist = traceLength;
                         return reflection;
