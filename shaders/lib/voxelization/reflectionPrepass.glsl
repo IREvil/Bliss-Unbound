@@ -17,7 +17,10 @@ uniform int framemod8;
 #else
 	#define REFL_RES REFLECTION_RES_MIRROR
 #endif
-#if REFL_RES == 25
+#if (REFL_PREPASS == 1 && !defined REFL_PREPASS_WORLD) || (REFL_PREPASS == 2 && !defined REFL_PREPASS_MIRROR)
+	// A resolution of 100% needs no prepass: the lighting pass traces inline there. Dispatch one group and return.
+	const vec2 workGroupsRender = vec2(0.015625, 0.015625);
+#elif REFL_RES == 25
 	const vec2 workGroupsRender = vec2(0.25, 0.25);
 #elif REFL_RES == 50
 	const vec2 workGroupsRender = vec2(0.5, 0.5);

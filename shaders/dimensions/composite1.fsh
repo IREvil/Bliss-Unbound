@@ -238,10 +238,11 @@ float convertHandDepth_2(in float depth, bool hand) {
 	#define WSR_DEFER_RESOLVE
 	layout(rgba32ui) uniform readonly uimage2D wsrTrans_img;
 #endif
-// Only world0 runs the reflection prepass (REFL_PREPASS_AVAILABLE from its entry files); elsewhere reflections stay inline.
+// Only world0 runs the reflection prepass (REFL_PREPASS_AVAILABLE comes from its entry files); elsewhere the
+// reflections are traced inline. 100% is not a reduced resolution: there the prepass would trace the same one ray
+// per screen pixel and then upsample it, so the inline path is both cheaper and identical to it.
 #if defined REFL_PREPASS_AVAILABLE && defined REFLECTION_PREPASS_ON && defined INCLUDE_BLISS_WSR && defined OVERWORLD_SHADER
-	#define REFL_PREPASS_WORLD
-	// Side of the upsample's tap grid: this is the clarity/smoothness trade, and with it the cost.
+	// Side of the upsample's tap grid: the widest blur a fully rough surface can average, and with it the cost.
 	#if REFLECTION_BLUR == 0
 		#define REFL_BLUR_SIDE 1
 	#elif REFLECTION_BLUR == 25
@@ -253,7 +254,10 @@ float convertHandDepth_2(in float depth, bool hand) {
 	#else
 		#define REFL_BLUR_SIDE 5
 	#endif
-	#ifdef WSR_DEFER_RESOLVE
+	#if REFLECTION_RES_WORLD < 100
+		#define REFL_PREPASS_WORLD
+	#endif
+	#if defined WSR_DEFER_RESOLVE && REFLECTION_RES_MIRROR < 100
 		#define REFL_PREPASS_MIRROR
 	#endif
 	#if REFL_PREPASS == 1
@@ -261,7 +265,9 @@ float convertHandDepth_2(in float depth, bool hand) {
 	#elif REFL_PREPASS == 2
 		layout(rgba16f) uniform writeonly image2D reflMirror_img;
 	#else
-		layout(rgba16f) uniform readonly image2D reflWorld_img;
+		#ifdef REFL_PREPASS_WORLD
+			layout(rgba16f) uniform readonly image2D reflWorld_img;
+		#endif
 		#ifdef REFL_PREPASS_MIRROR
 			layout(rgba16f) uniform readonly image2D reflMirror_img;
 		#endif
@@ -861,48 +867,59 @@ void applyPuddles(
 }
 
 
-#if defined REFL_PREPASS_WORLD && !defined REFL_PREPASS
+#if (defined REFL_PREPASS_WORLD || defined REFL_PREPASS_MIRROR) && !defined REFL_PREPASS
 	vec4 ReflLoad(int which, ivec2 c) {
 		#ifdef REFL_PREPASS_MIRROR
 			if (which == 1) return imageLoad(reflMirror_img, c);
 		#endif
-		return imageLoad(reflWorld_img, c);
+		#ifdef REFL_PREPASS_WORLD
+			return imageLoad(reflWorld_img, c);
+		#else
+			return vec4(0.0);
+		#endif
 	}
 
-	// Averages the reduced-resolution reflection over a grid of taps. The grid side comes from REFLECTION_BLUR, so
-	// the cost and the clarity loss are one setting: 1 tap keeps the trace sharp (and cheapest), 5 x 5 blurs the
-	// detail away and hides the sampling noise. Taps whose depth is not this surface are skipped, so a blur never
-	// drags a reflection across a silhouette.
-	vec4 ReflUpsample(int which, float scale, sampler2D depthTex, float refDepth, float blur, vec3 refDir) {
+	// Averages the reduced-resolution reflection over a grid of taps. REFLECTION_BLUR fixes the widest grid and the
+	// surface's own roughness decides how much of it applies: a mirror keeps one tap and pays nothing, a rough
+	// surface takes the whole grid and so sees a mixture of what its reflection cone really covers instead of a
+	// mirror image of one point. The weight falls off with distance, so the average stays anchored on the exact
+	// ray's hit, and taps whose depth is not this surface are skipped, so no blur can cross a silhouette.
+	vec4 ReflUpsample(int which, float scale, sampler2D depthTex, float refDepth, float roughness, vec3 refDir) {
 		#if defined REFL_PREPASS_MIRROR
+			// The mirror hand-off records a ray, not a roughness, so it keeps the small fixed 2 x 2 it always had.
 			int side = which == 1 ? 2 : REFL_BLUR_SIDE;
+			float sigma = which == 1 ? 1.5 : max(clamp(roughness, 0.0, 1.0) * float(REFL_BLUR_SIDE - 1) * 0.5, 1e-3);
 		#else
 			const int side = REFL_BLUR_SIDE;
+			float sigma = max(clamp(roughness, 0.0, 1.0) * float(REFL_BLUR_SIDE - 1) * 0.5, 1e-3);
 		#endif
+		float sigma2 = sigma * sigma;
 		vec2 screen = vec2(viewWidth, viewHeight);
 		ivec2 loMax = ivec2(ceil(screen * scale)) - 1;
 		vec2 lo = gl_FragCoord.xy * scale - 0.5;
-		ivec2 lo0 = ivec2(floor(lo));
-		float halfSpan = float(side - 1) * 0.5;
+		ivec2 loBase = ivec2(floor(lo));
+		int halfSpan = (side - 1) / 2;
 		float refL = ld(refDepth);
 
 		vec4 sum = vec4(0.0);
 		float weightSum = 0.0;
 		for (int i = 0; i < 25; i++) {
 			if (i >= side * side) break;
-			ivec2 o = ivec2(i % side, i / side);
-			if (side > 2) {
-				// Cheap tapered weight so the far taps at a 5 x 5 do not ring.
-				vec2 d = abs(vec2(o) - halfSpan) / (halfSpan + 0.5);
-				if (max(d.x, d.y) > 0.75) continue;
-			}
-			ivec2 c = clamp(lo0 + o - side / 2, ivec2(0), loMax);
-			vec4 v = imageLoad(reflWorld_img, c);
+			ivec2 o = ivec2(i % side, i / side) - halfSpan;
+			// Whole ring at a time: it is skipped once even its nearest possible tap is negligible.
+			float ring = float(max(abs(o.x), abs(o.y)));
+			if (ring > 1.0 && (ring - 1.0) * (ring - 1.0) > 6.5 * sigma2) continue;
+			// Measured from the texel that contains the pixel, so a sharp surface keeps one full-weight tap instead
+			// of spreading its weight over taps that all sit a fraction of a texel away.
+			vec2 d = vec2(o);
+			ivec2 c = clamp(loBase + o, ivec2(0), loMax);
+			vec4 v = ReflLoad(which, c);
 			if (v.a < 0.0) continue;
 			ivec2 rep = min(ivec2((vec2(c) + 0.5) / scale), ivec2(screen) - 1);
 			if (abs(ld(texelFetch2D(depthTex, rep, 0).x) - refL) > refL * 0.05 + 1e-4) continue;
-			sum += v;
-			weightSum += 1.0;
+			float w = exp(-dot(d, d) / sigma2);
+			sum += v * w;
+			weightSum += w;
 		}
 		return weightSum > 0.0 ? sum / weightSum : vec4(0.0, 0.0, 0.0, -1.0);
 	}

@@ -1029,10 +1029,14 @@ const vec3 aerochrome_color = mix(vec3(1.0, 0.0, 0.0), vec3(0.715, 0.303, 0.631)
 #define WORLD_SPACE_REF_MODE 1 // [1 2]
 // Resolution (percent) reflections are traced at in the overworld; the lighting pass upsamples them.
 // World: opaque blocks and entities. Mirrors: water, glass, ice and other translucents.
+// 100 means full resolution, and there the prepass is skipped: it would trace the same one ray per pixel and then
+// upsample it, so the lighting pass traces inline instead -- cheaper, and identical to the option being off.
 #define REFLECTION_RES_WORLD 25 // [25 50 75 100]
 #define REFLECTION_RES_MIRROR 50 // [25 50 75 100]
-// How much reflection clarity to trade for smoothness: the upsample averages a NxN grid of the reduced-resolution
-// reflection, so a bigger grid hides the sampling noise and softens the detail. Cost scales with the setting.
+// How much of the reduced-resolution reflection a fully rough surface averages. The upsample gathers a NxN grid of
+// taps around the pixel and weights them by distance, and the surface's own roughness sets how far that reaches: a
+// mirror keeps one tap and costs nothing, a rough surface takes the whole grid and so sees a mixture of its
+// surroundings instead of a mirror image. Cost scales with the setting.
 #define REFLECTION_BLUR 50 // [0 25 50 75 100]
 // Off traces all reflections at full resolution inside the lighting pass (the resolution sliders then do nothing).
 #define REFLECTION_PREPASS
