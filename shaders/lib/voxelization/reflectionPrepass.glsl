@@ -18,13 +18,14 @@ uniform int framemod8;
 #if REFL_PREPASS == 2
 	#define REFL_RES REFLECTION_RES_MIRROR
 #else
-	// Passes 3 and 4 blur pass 1's buffer, so they follow the world resolution.
 	#define REFL_RES REFLECTION_RES_WORLD
 #endif
 #if (REFL_PREPASS == 1 && !defined REFL_PREPASS_WORLD) || (REFL_PREPASS == 2 && !defined REFL_PREPASS_MIRROR) || ((REFL_PREPASS == 3 || REFL_PREPASS == 4) && !defined REFL_BLUR_AVAILABLE)
-	// A resolution of 100% needs no prepass, and the blur is off: the lighting pass traces inline there. Dispatch
-	// one group and return.
+	// The pass is not needed at all (blur off, or no prepass in this dimension): dispatch one group and return.
 	const vec2 workGroupsRender = vec2(0.015625, 0.015625);
+#elif REFL_PREPASS == 3 || REFL_PREPASS == 4
+	// The blur runs on its own fixed fraction of the screen, not at the trace's resolution.
+	const vec2 workGroupsRender = vec2(REFL_BLUR_SCALE, REFL_BLUR_SCALE);
 #elif REFL_RES == 25
 	const vec2 workGroupsRender = vec2(0.25, 0.25);
 #elif REFL_RES == 50
@@ -111,8 +112,9 @@ void main() {
 		#ifdef REFL_BLUR_AVAILABLE
 			// The blur passes overwrite this. Writing it here means that if they are ever skipped (a gap in the
 			// _a/_b/_c/_d chain stops Iris collecting them) the lighting pass still finds the traced reflection
-			// rather than an uninitialised image, and only loses the softness.
-			imageStore(reflWorldBlur_img, lo, result);
+			// rather than an uninitialised image, and only loses the softness. The blur grid is coarser than the
+			// trace, so this is a decimated copy.
+			imageStore(reflWorldBlur_img, ivec2(vec2(lo) * (REFL_BLUR_SCALE / scale)), result);
 		#endif
 	#else
 		uvec4 td = imageLoad(wsrTrans_img, px);
@@ -134,39 +136,51 @@ void main() {
 	#endif
 #endif
 #if (REFL_PREPASS == 3 || REFL_PREPASS == 4) && defined REFL_BLUR_AVAILABLE
-	// A wide blur of pass 1's buffer: the surface's roughness spreads its reflection over a cone that one ray per
-	// reduced texel cannot cover, and this is where the cone's samples come from. Two triangular passes make a
-	// smooth kernel, the taps are one reduced texel apart so the average is dense (a sparse one would sparkle),
-	// and taps whose depth is not this surface are dropped, which both keeps the blur on the reflecting plane and
-	// stops it dragging a reflection across a silhouette.
-	float scale = float(REFLECTION_RES_WORLD) * 0.01;
+	// The roughness blur: the surface's cone spreads its reflection, and this is where those samples come from. It
+	// runs on a FIXED fraction of the screen (REFL_BLUR_SCALE) rather than the trace's resolution, because that
+	// coarse, mosaic-like grid is what gives a rough reflection its character -- at the trace's resolution a 50%-plus
+	// trace is sharp enough that the same blur just looks like a soft mirror. The trace may be finer than this grid;
+	// each coarse texel then reads the trace texel under it, so the cost does not grow with the resolution setting.
+	// Taps step one coarse texel at a time (dense, so the average cannot sparkle), the kernel carries a tight core
+	// plus a broad wash, and taps whose depth is not this surface are dropped, which keeps the blur on the
+	// reflecting plane and stops it dragging a reflection across a silhouette.
 	vec2 screen = vec2(viewWidth, viewHeight);
-	ivec2 lo = ivec2(gl_GlobalInvocationID.xy);
-	ivec2 loMax = ivec2(ceil(screen * scale)) - 1;
-	if (any(greaterThan(lo, loMax))) return;
+	float scale = float(REFL_RES) * 0.01;
+	ivec2 lc = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 lcMax = ivec2(ceil(screen * REFL_BLUR_SCALE)) - 1;
+	ivec2 traceMax = ivec2(ceil(screen * scale)) - 1;
+	if (any(greaterThan(lc, lcMax))) return;
 
-	// Width in reduced texels for this resolution, capped so the two passes stay bounded in cost: this is the only
-	// place the blur is paid for, and it runs on the reduced grid.
-	int w = clamp(int(round(REFL_BLUR_PX * scale)), 1, 16);
-	ivec2 px = min(ivec2((vec2(lo) + 0.5) / scale), ivec2(screen) - 1);
-	float refL = ld(texelFetch2D(depthtex1, px, 0).x);
+	// Width in coarse texels, capped so the two passes stay bounded: this is the only place the blur is paid for.
+	int w = clamp(int(round(REFL_BLUR_PX * REFL_BLUR_SCALE)), 1, 16);
+	// Trace texels per coarse texel (1, 2, 3 or 4 depending on the resolution setting).
+	vec2 s = vec2(scale / REFL_BLUR_SCALE);
+	ivec2 thisTrace = clamp(ivec2(vec2(lc) * s), ivec2(0), traceMax);
+	ivec2 thisPx = min(ivec2((vec2(thisTrace) + 0.5) / scale), ivec2(screen) - 1);
+	float refL = ld(texelFetch2D(depthtex1, thisPx, 0).x);
 
 	vec4 sum = vec4(0.0);
 	float weightSum = 0.0;
 	for (int i = -16; i <= 16; i++) {
 		if (i < -w || i > w) continue;
 		#if REFL_PREPASS == 3
-			ivec2 c = clamp(ivec2(lo.x + i, lo.y), ivec2(0), loMax);
+			ivec2 cc = lc + ivec2(i, 0);
 		#else
-			ivec2 c = clamp(ivec2(lo.x, lo.y + i), ivec2(0), loMax);
+			ivec2 cc = lc + ivec2(0, i);
 		#endif
-		ivec2 rep = min(ivec2((vec2(c) + 0.5) / scale), ivec2(screen) - 1);
-		if (abs(ld(texelFetch2D(depthtex1, rep, 0).x) - refL) > refL * 0.05 + 1e-4) continue;
+		cc = clamp(cc, ivec2(0), lcMax);
+		vec4 v;
 		#if REFL_PREPASS == 3
-			vec4 v = imageLoad(reflWorld_img, c);
+			// The trace holds the finer image: read the texel this coarse tap stands for.
+			ivec2 tc = clamp(ivec2(vec2(cc) * s), ivec2(0), traceMax);
+			v = imageLoad(reflWorld_img, tc);
 		#else
-			vec4 v = imageLoad(reflWorldBlurTmp_img, c);
+			// The vertical pass reads the horizontal pass' result, which is already on the coarse grid.
+			ivec2 tc = cc;
+			v = imageLoad(reflWorldBlurTmp_img, cc);
 		#endif
+		ivec2 rep = min(ivec2((vec2(tc) + 0.5) / scale), ivec2(screen) - 1);
+		if (abs(ld(texelFetch2D(depthtex1, rep, 0).x) - refL) > refL * 0.05 + 1e-4) continue;
 		if (v.a < 0.0) continue;
 		// Two scales in one kernel. A rough surface does not see a smeared copy of one object: it sees a tight core
 		// around the mirror direction plus a broad wash of everything else the cone covers, and the wash is what
@@ -178,11 +192,11 @@ void main() {
 	}
 	// With no usable tap the source's own value is kept: the blur can only ever soften a reflection, never drop it.
 	#if REFL_PREPASS == 3
-		vec4 blurred = weightSum > 0.0 ? sum / weightSum : imageLoad(reflWorld_img, lo);
-		imageStore(reflWorldBlurTmp_img, lo, blurred);
+		vec4 fallback = imageLoad(reflWorld_img, thisTrace);
+		imageStore(reflWorldBlurTmp_img, lc, weightSum > 0.0 ? sum / weightSum : fallback);
 	#else
-		vec4 blurred = weightSum > 0.0 ? sum / weightSum : imageLoad(reflWorldBlurTmp_img, lo);
-		imageStore(reflWorldBlur_img, lo, blurred);
+		vec4 fallback = imageLoad(reflWorldBlurTmp_img, lc);
+		imageStore(reflWorldBlur_img, lc, weightSum > 0.0 ? sum / weightSum : fallback);
 	#endif
 #endif
 }

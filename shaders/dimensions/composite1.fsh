@@ -239,21 +239,20 @@ float convertHandDepth_2(in float depth, bool hand) {
 	layout(rgba32ui) uniform readonly uimage2D wsrTrans_img;
 #endif
 // Only world0 runs the reflection prepass (REFL_PREPASS_AVAILABLE comes from its entry files); elsewhere the
-// reflections are traced inline. 100% is not a reduced resolution: there the prepass would trace the same one ray
-// per screen pixel and then upsample it, so the inline path is both cheaper and identical to it.
+// reflections are traced inline. It runs at every resolution setting, 100% included: at full resolution the trace is
+// not the point, the roughness blur is, and the blur is what the reduced-resolution path exists for now.
 #if defined REFL_PREPASS_AVAILABLE && defined REFLECTION_PREPASS_ON && defined INCLUDE_BLISS_WSR && defined OVERWORLD_SHADER
-	#if REFLECTION_RES_WORLD < 100
-		#define REFL_PREPASS_WORLD
-	#endif
-	#if defined WSR_DEFER_RESOLVE && REFLECTION_RES_MIRROR < 100
+	#define REFL_PREPASS_WORLD
+	#ifdef WSR_DEFER_RESOLVE
 		#define REFL_PREPASS_MIRROR
 	#endif
 	// The roughness blur of the reduced-resolution reflection (world0/composite2_c/_d.csh). A rough surface reflects
-	// a cone, not a ray, and averaging the reduced-resolution texels around the pixel is the only way to gather
-	// enough of that cone cheaply: the passes run on the reduced grid, so one tap costs a fraction of a traced ray.
-	// The width is in screen pixels and is converted to reduced-resolution texels per pass, so the blur looks the
-	// same at every resolution setting. It stays modest: a wider kernel spreads a reflection further past the
-	// object it shows, and the intensity is handled separately by ROUGH_REFLECTION_STRENGTH.
+	// a cone, not a ray, and averaging the texels around the pixel is the only way to gather enough of that cone
+	// cheaply. It runs on a FIXED fraction of the screen, REFL_BLUR_SCALE, not at the trace's resolution: that
+	// fraction is what gives a rough reflection its character, and tying it to the resolution slider made 50% and up
+	// look like a mirror again. The trace may be finer than this grid; each coarse texel then stands for the trace
+	// texel under it, so the blur's cost does not grow with the resolution setting. REFLECTION_BLUR is the width in
+	// screen pixels, so the look does not change with the resolution either.
 	//
 	// Iris collects a program's extra compute passes as <program>_a.csh, _b.csh, _c.csh ... and STOPS AT THE FIRST
 	// MISSING LETTER (ProgramSet.readComputeArray breaks when the source is null). The letters therefore have to stay
@@ -262,6 +261,9 @@ float convertHandDepth_2(in float depth, bool hand) {
 	// vertical). Keep it that way if a pass is ever removed.
 	#if defined REFL_PREPASS_WORLD && REFLECTION_BLUR > 0
 		#define REFL_BLUR_AVAILABLE
+		// The grid the roughness blur runs on, as a fraction of the screen. Independent of REFLECTION_RES_* on
+		// purpose: this is the coarse, mosaic-like look a rough reflection should have.
+		#define REFL_BLUR_SCALE 0.25
 		#if REFLECTION_BLUR == 25
 			#define REFL_BLUR_PX 12.0
 		#elif REFLECTION_BLUR == 50
@@ -1599,9 +1601,10 @@ void main() {
 				float reflScale = float(REFLECTION_RES_WORLD) * 0.01;
 				#ifdef REFL_BLUR_AVAILABLE
 					// Mirrors keep the trace (their cone is a ray); anything with a real cone takes the spread, which is
-					// most solid blocks, leaving the exact trace to the near-mirrors.
-					float reflBlurMix = smoothstep(0.04, 0.34, reflRough);
-					vec4 reflSoft = ReflUpsample(2, reflScale, depthtex1, z, reflRough, vec3(0.0));
+					// most solid blocks, leaving the exact trace to the near-mirrors. The ramp is short on purpose: a
+					// partly sharp reflection still reads as a mirror, which is what made higher resolutions look wrong.
+					float reflBlurMix = smoothstep(0.04, 0.20, reflRough);
+					vec4 reflSoft = ReflUpsample(2, REFL_BLUR_SCALE, depthtex1, z, reflRough, vec3(0.0));
 					vec4 reflValue;
 					if (reflSoft.a >= 0.0 && reflBlurMix >= 0.999) {
 						// Fully rough and the blurred copy covers this pixel: the trace is not needed at all.

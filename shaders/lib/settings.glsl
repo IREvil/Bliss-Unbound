@@ -1029,17 +1029,14 @@ const vec3 aerochrome_color = mix(vec3(1.0, 0.0, 0.0), vec3(0.715, 0.303, 0.631)
 #define WORLD_SPACE_REF_MODE 1 // [1 2]
 // Resolution (percent) reflections are traced at in the overworld; the lighting pass upsamples them.
 // World: opaque blocks and entities. Mirrors: water, glass, ice and other translucents.
-// 100 means full resolution, and there the prepass is skipped: it would trace the same one ray per pixel and then
-// upsample it, so the lighting pass traces inline instead -- cheaper, and identical to the option being off.
+// This changes detail only, not the look: the roughness blur below always runs on its own fixed grid.
 #define REFLECTION_RES_WORLD 25 // [25 50 75 100]
 #define REFLECTION_RES_MIRROR 50 // [25 50 75 100]
 // How far a rough surface spreads its reflection, in screen pixels. A reduced-resolution trace holds one ray per
-// reduced texel, so it cannot cover the cone a rough surface really sees; this blurs that buffer over the cone's
-// footprint on the reduced grid (two extra compute passes) and blends it in as roughness rises, so mirrors stay
-// sharp and rough surfaces stop reading as mirrors. The kernel carries a tight core and a broad wash together,
-// because that is what a cone looks like: a smeared copy of one object is not roughness. The width is converted to
-// reduced texels per pass, so it looks the same at every resolution setting. 0 turns the passes off and keeps every
-// reflection on its exact ray.
+// texel, so it cannot cover the cone a rough surface really sees; this blurs that buffer (two extra compute passes,
+// on their own fixed coarse grid, so the blur looks the same at every resolution setting) and blends it in as
+// roughness rises. The kernel carries a tight core and a broad wash together, because that is what a cone looks
+// like: a smeared copy of one object is not roughness. 0 turns the passes off and keeps every reflection exact.
 #define REFLECTION_BLUR 50 // [0 25 50 75 100]
 // How much brightness a rough reflection keeps (percent). The blur carries the spread itself, so this only matches
 // the overall level: raise it once the spread is doing the work, and lower it if a bright block's reflection (a
