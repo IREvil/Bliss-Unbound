@@ -1032,15 +1032,16 @@ const vec3 aerochrome_color = mix(vec3(1.0, 0.0, 0.0), vec3(0.715, 0.303, 0.631)
 // This changes detail only, not the look: the roughness blur below always runs on its own fixed grid.
 #define REFLECTION_RES_WORLD 25 // [25 50 75 100]
 #define REFLECTION_RES_MIRROR 50 // [25 50 75 100]
-// How far a rough surface spreads its reflection, in screen pixels. A reduced-resolution trace holds one ray per
-// texel, so it cannot cover the cone a rough surface really sees; this blurs that buffer (two extra compute passes,
-// on their own fixed coarse grid, so the blur looks the same at every resolution setting) and blends it in as
-// roughness rises. The kernel carries a tight core and a broad wash together, because that is what a cone looks
-// like: a smeared copy of one object is not roughness. 0 turns the passes off and keeps every reflection exact.
+// How far the roughness blur spreads a reflection, in screen pixels (two extra compute passes, on their own fixed
+// coarse grid, so it looks the same at every resolution setting). The MATERIAL's own smoothness decides how much of
+// it a surface takes: a mirror-like block (packed ice, polished stone, a wet floor) keeps the traced image, a rough
+// one takes the full blur, and the band between gets a small dense blur of the trace first so the change is not a
+// hard switch. The kernel carries a tight core and a broad wash together, because that is what a cone looks like.
+// 0 turns the passes off and keeps every reflection exact.
 #define REFLECTION_BLUR 50 // [0 25 50 75 100]
-// How much brightness a rough reflection keeps (percent). The blur carries the spread itself, so this only matches
-// the overall level: raise it once the spread is doing the work, and lower it if a bright block's reflection (a
-// fireplace, glowing ore) still reads as an overblown patch. Mirrors and the full-resolution path are unaffected.
+// How much brightness a surface that takes the blurred copy keeps (percent). Surfaces that keep the traced image --
+// mirrors and everything slightly rough -- are not affected. Lower it if a bright block's reflection (a fireplace,
+// glowing ore) still reads as an overblown patch, raise it once the spread itself is doing the work.
 #define ROUGH_REFLECTION_STRENGTH 85 // [0 25 40 50 60 65 70 80 85 90 100]
 // Off traces all reflections at full resolution inside the lighting pass (the resolution sliders then do nothing).
 #define REFLECTION_PREPASS
