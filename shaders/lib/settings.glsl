@@ -1026,26 +1026,43 @@ const vec3 aerochrome_color = mix(vec3(1.0, 0.0, 0.0), vec3(0.715, 0.303, 0.631)
 #define WORLD_SPACE_REFLECTIONS
 #define WORLD_SPACE_PLAYER_REF -1 // [-1 1]
 // 1 = world-space first, screen-space only where it misses. 2 = screen-space first, world-space fills misses.
-#define WORLD_SPACE_REF_MODE 1 // [1 2]
-// Resolution (percent) reflections are traced at in the overworld; the lighting pass upsamples them.
-// World: opaque blocks and entities. Mirrors: water, glass, ice and other translucents.
-// This changes detail only, not the look: the roughness blur below always runs on its own fixed grid.
-#define REFLECTION_RES_WORLD 25 // [25 50 75 100]
-#define REFLECTION_RES_MIRROR 50 // [25 50 75 100]
+#define WORLD_SPACE_REF_MODE 2 // [1 2]
+// How much resolution the reflections get. They are traced at a fraction of the screen and upscaled by the lighting
+// pass, which is where most of their cost sits; Full traces everything at full resolution in the lighting pass and
+// does not run the reflection prepass at all. This changes detail only, never the look: the roughness blur below
+// always runs on its own fixed grid.
+#define REFLECTION_QUALITY 0 // [0 1 2 3]
+#if REFLECTION_QUALITY == 0
+    // Low: 25% world, 50% mirror.
+    #define REFLECTION_RES_WORLD 25
+    #define REFLECTION_RES_MIRROR 50
+#elif REFLECTION_QUALITY == 1
+    // Medium: 50% world, 75% mirror.
+    #define REFLECTION_RES_WORLD 50
+    #define REFLECTION_RES_MIRROR 75
+#elif REFLECTION_QUALITY == 2
+    // High: 75% world, 100% mirror.
+    #define REFLECTION_RES_WORLD 75
+    #define REFLECTION_RES_MIRROR 100
+#else
+    // Full: no prepass, everything traced at full resolution in the lighting pass.
+    #define REFLECTION_RES_WORLD 100
+    #define REFLECTION_RES_MIRROR 100
+#endif
 // How far the roughness blur spreads a reflection, in screen pixels (two extra compute passes, on their own fixed
 // coarse grid, so it looks the same at every resolution setting). The MATERIAL's own smoothness decides how much of
 // it a surface takes: a mirror-like block (packed ice, polished stone, a wet floor) keeps the traced image, a rough
 // one takes the full blur, and the band between gets a small dense blur of the trace first so the change is not a
 // hard switch. The kernel carries a tight core and a broad wash together, because that is what a cone looks like.
 // 0 turns the passes off and keeps every reflection exact.
-#define REFLECTION_BLUR 50 // [0 25 50 75 100]
+#define REFLECTION_BLUR 100 // [0 25 50 75 100]
 // How much brightness a surface that takes the blurred copy keeps (percent). Surfaces that keep the traced image --
 // mirrors and everything slightly rough -- are not affected. Lower it if a bright block's reflection (a fireplace,
 // glowing ore) still reads as an overblown patch, raise it once the spread itself is doing the work.
-#define ROUGH_REFLECTION_STRENGTH 85 // [0 25 40 50 60 65 70 80 85 90 100]
-// Off traces all reflections at full resolution inside the lighting pass (the resolution sliders then do nothing).
-#define REFLECTION_PREPASS
-#ifdef REFLECTION_PREPASS
+#define ROUGH_REFLECTION_STRENGTH 60 // [0 25 40 50 60 65 70 80 85 90 100]
+// REFLECTION_QUALITY decides this: only Full traces everything inline.
+#if REFLECTION_QUALITY < 3
+    #define REFLECTION_PREPASS
     #define REFLECTION_PREPASS_ON
 #endif
 // Brightness of world reflections (percent) by day and by night. Other dimensions use the day value.

@@ -18,7 +18,7 @@ import sys
 
 INDEPENDENT = {"sun_illuminance", "moon_illuminance", "TONEMAP", "TONEMAP_MOOD"}
 # Order the presets appear in the shader options menu. Names not listed follow, alphabetically.
-PRESET_ORDER = ["Bliss Default", "Medium", "High", "Ultra"]
+PRESET_ORDER = ["Bliss Default", "Medium", "High", "Ultra", "Ultra Plus"]
 DEFINE_RE = r"^(?P<indent>[ \t]*)(?P<lead>(?://[ \t]*)?)#[ \t]*define[ \t]+%s\b(?P<rest>[^\n]*)$"
 BEGIN = "# BEGIN generated profiles (tools/presets.py)"
 END = "# END generated profiles"
