@@ -83,10 +83,25 @@ if (mat < 32008) {
                     #include "/lib/materials/specificMaterials/translucents/water.glsl"
                 #endif
             } else /*if (mat == 32004)*/ { // Ice
-                smoothnessG = pow2(color.g) * color.g;
-                highlightMult = pow2(min1(pow2(color.g) * 1.5)) * 3.5;
+                // Ice is a translucent block, so it should look like one: a see-through, glass-like surface rather
+                // than a milky solid.  Upstream hands it a texture-driven smoothness and a *higher* reflection
+                // multiplier than glass, and no near-field tweaks, which together read as a reflective solid.
+                // These are glass' values instead -- mirror-smooth, half-strength reflections, and the same
+                // close-range fade -- with the texture only deciding the last sliver of roughness so ice still
+                // reads as ice rather than as a window pane.
+                smoothnessG = 0.9 + 0.1 * pow2(color.g);
+                highlightMult = 3.5;
+                reflectMult = 0.5;
 
-                reflectMult = 0.7;
+                // Thin the body.  A translucent block's opacity is its texture alpha, and ice's is high enough (and
+                // the reflection contribution on top of it pushes it higher still) that it reads as opaque; capping
+                // it keeps the texture's own variation -- cracks, edges, the blue cast -- while leaving the block
+                // behind visible through it.  Capping rather than scaling so the intent does not depend on which
+                // resource pack's ice texture is in use.
+                const float ICE_MAX_ALPHA = 0.5;
+                color.a = min(color.a, ICE_MAX_ALPHA);
+
+                DoTranslucentTweaks(color, fresnelM, reflectMult, lViewPos);
             }
         }
     }
